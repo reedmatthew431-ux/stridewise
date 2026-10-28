@@ -1,0 +1,15 @@
+# Code-only rule: no real athlete data ever enters this repo.
+# Raw exports, normalized profiles, and fact packs live in the
+# workspace only and are injected at deploy time.
+*.xml
+*.zip
+*.fit
+*.gpx
+*.tcx
+normalized.json
+factpack*.json
+*_factpack.json
+athletes/
+__pycache__/
+*.pyc
+.DS_Store

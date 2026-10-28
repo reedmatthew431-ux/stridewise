@@ -1,0 +1,436 @@
+{
+  "ground_truth": {
+    "A1_bedtime_to_duration": "slope -60 min of sleep per hour later bedtime (planted, strong)",
+    "A3_duration_to_rhr": "slope -3 bpm per extra hour of sleep (planted, moderate)",
+    "null_efficiency": "efficiency independent of bedtime/duration (planted null; engine must return no_pattern, never a story)",
+    "n_nights": 60,
+    "note": "Synthetic ONLY, private engine-validation harness. Never a demo profile."
+  },
+  "athlete": {
+    "id": "fixture-a",
+    "label": "Fixture A (synthetic)",
+    "source": "synthetic"
+  },
+  "sleep_nights": [
+    {
+      "wake_date": "2026-08-01",
+      "bedtime_min_past_21": 28,
+      "duration_min": 481.5,
+      "resting_hr_bpm": 52.1,
+      "sleep_efficiency_pct": 92.5
+    },
+    {
+      "wake_date": "2026-08-02",
+      "bedtime_min_past_21": 139,
+      "duration_min": 380.3,
+      "resting_hr_bpm": 58.3,
+      "sleep_efficiency_pct": 93.1
+    },
+    {
+      "wake_date": "2026-08-03",
+      "bedtime_min_past_21": 7,
+      "duration_min": 500.3,
+      "resting_hr_bpm": 51.6,
+      "sleep_efficiency_pct": 89.9
+    },
+    {
+      "wake_date": "2026-08-04",
+      "bedtime_min_past_21": 139,
+      "duration_min": 351.8,
+      "resting_hr_bpm": 57.0,
+      "sleep_efficiency_pct": 93.1
+    },
+    {
+      "wake_date": "2026-08-05",
+      "bedtime_min_past_21": 71,
+      "duration_min": 429.5,
+      "resting_hr_bpm": 54.4,
+      "sleep_efficiency_pct": 93.1
+    },
+    {
+      "wake_date": "2026-08-06",
+      "bedtime_min_past_21": 87,
+      "duration_min": 395.6,
+      "resting_hr_bpm": 56.0,
+      "sleep_efficiency_pct": 93.4
+    },
+    {
+      "wake_date": "2026-08-07",
+      "bedtime_min_past_21": 86,
+      "duration_min": 423.4,
+      "resting_hr_bpm": 55.7,
+      "sleep_efficiency_pct": 90.8
+    },
+    {
+      "wake_date": "2026-08-08",
+      "bedtime_min_past_21": 67,
+      "duration_min": 441.5,
+      "resting_hr_bpm": 54.8,
+      "sleep_efficiency_pct": 89.0
+    },
+    {
+      "wake_date": "2026-08-09",
+      "bedtime_min_past_21": 137,
+      "duration_min": 382.2,
+      "resting_hr_bpm": 59.3,
+      "sleep_efficiency_pct": 93.5
+    },
+    {
+      "wake_date": "2026-08-10",
+      "bedtime_min_past_21": 92,
+      "duration_min": 412.7,
+      "resting_hr_bpm": 53.3,
+      "sleep_efficiency_pct": 90.5
+    },
+    {
+      "wake_date": "2026-08-11",
+      "bedtime_min_past_21": 11,
+      "duration_min": 478.1,
+      "resting_hr_bpm": 49.9,
+      "sleep_efficiency_pct": 95.9
+    },
+    {
+      "wake_date": "2026-08-12",
+      "bedtime_min_past_21": 25,
+      "duration_min": 472.8,
+      "resting_hr_bpm": 51.2,
+      "sleep_efficiency_pct": 93.5
+    },
+    {
+      "wake_date": "2026-08-13",
+      "bedtime_min_past_21": 93,
+      "duration_min": 412.9,
+      "resting_hr_bpm": 56.6,
+      "sleep_efficiency_pct": 90.5
+    },
+    {
+      "wake_date": "2026-08-14",
+      "bedtime_min_past_21": 18,
+      "duration_min": 465.6,
+      "resting_hr_bpm": 52.0,
+      "sleep_efficiency_pct": 91.2
+    },
+    {
+      "wake_date": "2026-08-15",
+      "bedtime_min_past_21": 62,
+      "duration_min": 444.1,
+      "resting_hr_bpm": 55.1,
+      "sleep_efficiency_pct": 94.9
+    },
+    {
+      "wake_date": "2026-08-16",
+      "bedtime_min_past_21": 142,
+      "duration_min": 356.9,
+      "resting_hr_bpm": 58.4,
+      "sleep_efficiency_pct": 93.7
+    },
+    {
+      "wake_date": "2026-08-17",
+      "bedtime_min_past_21": 14,
+      "duration_min": 486.4,
+      "resting_hr_bpm": 52.1,
+      "sleep_efficiency_pct": 91.4
+    },
+    {
+      "wake_date": "2026-08-18",
+      "bedtime_min_past_21": 54,
+      "duration_min": 454.7,
+      "resting_hr_bpm": 54.9,
+      "sleep_efficiency_pct": 90.7
+    },
+    {
+      "wake_date": "2026-08-19",
+      "bedtime_min_past_21": 80,
+      "duration_min": 423.3,
+      "resting_hr_bpm": 56.6,
+      "sleep_efficiency_pct": 94.1
+    },
+    {
+      "wake_date": "2026-08-20",
+      "bedtime_min_past_21": 36,
+      "duration_min": 452.6,
+      "resting_hr_bpm": 53.3,
+      "sleep_efficiency_pct": 93.5
+    },
+    {
+      "wake_date": "2026-08-21",
+      "bedtime_min_past_21": 143,
+      "duration_min": 337.7,
+      "resting_hr_bpm": 58.5,
+      "sleep_efficiency_pct": 89.6
+    },
+    {
+      "wake_date": "2026-08-22",
+      "bedtime_min_past_21": 92,
+      "duration_min": 414.9,
+      "resting_hr_bpm": 56.3,
+      "sleep_efficiency_pct": 98.8
+    },
+    {
+      "wake_date": "2026-08-23",
+      "bedtime_min_past_21": 130,
+      "duration_min": 349.9,
+      "resting_hr_bpm": 58.6,
+      "sleep_efficiency_pct": 92.7
+    },
+    {
+      "wake_date": "2026-08-24",
+      "bedtime_min_past_21": 40,
+      "duration_min": 454.7,
+      "resting_hr_bpm": 53.7,
+      "sleep_efficiency_pct": 90.0
+    },
+    {
+      "wake_date": "2026-08-25",
+      "bedtime_min_past_21": 16,
+      "duration_min": 471.9,
+      "resting_hr_bpm": 53.7,
+      "sleep_efficiency_pct": 90.5
+    },
+    {
+      "wake_date": "2026-08-26",
+      "bedtime_min_past_21": 141,
+      "duration_min": 360.8,
+      "resting_hr_bpm": 58.1,
+      "sleep_efficiency_pct": 91.8
+    },
+    {
+      "wake_date": "2026-08-27",
+      "bedtime_min_past_21": 29,
+      "duration_min": 464.8,
+      "resting_hr_bpm": 51.1,
+      "sleep_efficiency_pct": 91.7
+    },
+    {
+      "wake_date": "2026-08-28",
+      "bedtime_min_past_21": 28,
+      "duration_min": 489.1,
+      "resting_hr_bpm": 51.3,
+      "sleep_efficiency_pct": 93.1
+    },
+    {
+      "wake_date": "2026-08-29",
+      "bedtime_min_past_21": 0,
+      "duration_min": 523.5,
+      "resting_hr_bpm": 48.9,
+      "sleep_efficiency_pct": 91.8
+    },
+    {
+      "wake_date": "2026-08-30",
+      "bedtime_min_past_21": 45,
+      "duration_min": 469.1,
+      "resting_hr_bpm": 51.8,
+      "sleep_efficiency_pct": 92.0
+    },
+    {
+      "wake_date": "2026-08-31",
+      "bedtime_min_past_21": 76,
+      "duration_min": 431.8,
+      "resting_hr_bpm": 52.9,
+      "sleep_efficiency_pct": 92.6
+    },
+    {
+      "wake_date": "2026-09-01",
+      "bedtime_min_past_21": 41,
+      "duration_min": 470.0,
+      "resting_hr_bpm": 50.0,
+      "sleep_efficiency_pct": 91.1
+    },
+    {
+      "wake_date": "2026-09-02",
+      "bedtime_min_past_21": 135,
+      "duration_min": 379.1,
+      "resting_hr_bpm": 56.0,
+      "sleep_efficiency_pct": 91.0
+    },
+    {
+      "wake_date": "2026-09-03",
+      "bedtime_min_past_21": 92,
+      "duration_min": 408.4,
+      "resting_hr_bpm": 57.6,
+      "sleep_efficiency_pct": 89.4
+    },
+    {
+      "wake_date": "2026-09-04",
+      "bedtime_min_past_21": 78,
+      "duration_min": 422.6,
+      "resting_hr_bpm": 56.0,
+      "sleep_efficiency_pct": 91.3
+    },
+    {
+      "wake_date": "2026-09-05",
+      "bedtime_min_past_21": 124,
+      "duration_min": 374.0,
+      "resting_hr_bpm": 59.0,
+      "sleep_efficiency_pct": 86.9
+    },
+    {
+      "wake_date": "2026-09-06",
+      "bedtime_min_past_21": 136,
+      "duration_min": 364.6,
+      "resting_hr_bpm": 57.0,
+      "sleep_efficiency_pct": 89.5
+    },
+    {
+      "wake_date": "2026-09-07",
+      "bedtime_min_past_21": 67,
+      "duration_min": 435.3,
+      "resting_hr_bpm": 52.2,
+      "sleep_efficiency_pct": 91.5
+    },
+    {
+      "wake_date": "2026-09-08",
+      "bedtime_min_past_21": 54,
+      "duration_min": 464.2,
+      "resting_hr_bpm": 51.7,
+      "sleep_efficiency_pct": 90.8
+    },
+    {
+      "wake_date": "2026-09-09",
+      "bedtime_min_past_21": 102,
+      "duration_min": 380.4,
+      "resting_hr_bpm": 59.2,
+      "sleep_efficiency_pct": 91.9
+    },
+    {
+      "wake_date": "2026-09-10",
+      "bedtime_min_past_21": 112,
+      "duration_min": 398.6,
+      "resting_hr_bpm": 55.1,
+      "sleep_efficiency_pct": 92.0
+    },
+    {
+      "wake_date": "2026-09-11",
+      "bedtime_min_past_21": 5,
+      "duration_min": 499.4,
+      "resting_hr_bpm": 50.1,
+      "sleep_efficiency_pct": 91.2
+    },
+    {
+      "wake_date": "2026-09-12",
+      "bedtime_min_past_21": 56,
+      "duration_min": 462.8,
+      "resting_hr_bpm": 53.0,
+      "sleep_efficiency_pct": 92.7
+    },
+    {
+      "wake_date": "2026-09-13",
+      "bedtime_min_past_21": 8,
+      "duration_min": 493.6,
+      "resting_hr_bpm": 51.7,
+      "sleep_efficiency_pct": 91.4
+    },
+    {
+      "wake_date": "2026-09-14",
+      "bedtime_min_past_21": 60,
+      "duration_min": 437.5,
+      "resting_hr_bpm": 55.8,
+      "sleep_efficiency_pct": 88.9
+    },
+    {
+      "wake_date": "2026-09-15",
+      "bedtime_min_past_21": 146,
+      "duration_min": 349.3,
+      "resting_hr_bpm": 57.5,
+      "sleep_efficiency_pct": 91.3
+    },
+    {
+      "wake_date": "2026-09-16",
+      "bedtime_min_past_21": 121,
+      "duration_min": 381.8,
+      "resting_hr_bpm": 56.0,
+      "sleep_efficiency_pct": 93.7
+    },
+    {
+      "wake_date": "2026-09-17",
+      "bedtime_min_past_21": 108,
+      "duration_min": 399.3,
+      "resting_hr_bpm": 53.5,
+      "sleep_efficiency_pct": 94.1
+    },
+    {
+      "wake_date": "2026-09-18",
+      "bedtime_min_past_21": 13,
+      "duration_min": 471.0,
+      "resting_hr_bpm": 48.6,
+      "sleep_efficiency_pct": 93.7
+    },
+    {
+      "wake_date": "2026-09-19",
+      "bedtime_min_past_21": 86,
+      "duration_min": 421.1,
+      "resting_hr_bpm": 55.2,
+      "sleep_efficiency_pct": 91.1
+    },
+    {
+      "wake_date": "2026-09-20",
+      "bedtime_min_past_21": 49,
+      "duration_min": 455.8,
+      "resting_hr_bpm": 54.7,
+      "sleep_efficiency_pct": 90.6
+    },
+    {
+      "wake_date": "2026-09-21",
+      "bedtime_min_past_21": 63,
+      "duration_min": 441.6,
+      "resting_hr_bpm": 54.3,
+      "sleep_efficiency_pct": 91.4
+    },
+    {
+      "wake_date": "2026-09-22",
+      "bedtime_min_past_21": 140,
+      "duration_min": 374.2,
+      "resting_hr_bpm": 58.5,
+      "sleep_efficiency_pct": 91.7
+    },
+    {
+      "wake_date": "2026-09-23",
+      "bedtime_min_past_21": 23,
+      "duration_min": 476.5,
+      "resting_hr_bpm": 54.8,
+      "sleep_efficiency_pct": 90.3
+    },
+    {
+      "wake_date": "2026-09-24",
+      "bedtime_min_past_21": 42,
+      "duration_min": 446.6,
+      "resting_hr_bpm": 54.6,
+      "sleep_efficiency_pct": 94.8
+    },
+    {
+      "wake_date": "2026-09-25",
+      "bedtime_min_past_21": 42,
+      "duration_min": 438.5,
+      "resting_hr_bpm": 50.9,
+      "sleep_efficiency_pct": 96.0
+    },
+    {
+      "wake_date": "2026-09-26",
+      "bedtime_min_past_21": 67,
+      "duration_min": 451.8,
+      "resting_hr_bpm": 52.2,
+      "sleep_efficiency_pct": 91.3
+    },
+    {
+      "wake_date": "2026-09-27",
+      "bedtime_min_past_21": 142,
+      "duration_min": 376.1,
+      "resting_hr_bpm": 56.3,
+      "sleep_efficiency_pct": 90.0
+    },
+    {
+      "wake_date": "2026-09-28",
+      "bedtime_min_past_21": 48,
+      "duration_min": 442.9,
+      "resting_hr_bpm": 57.6,
+      "sleep_efficiency_pct": 89.8
+    },
+    {
+      "wake_date": "2026-09-29",
+      "bedtime_min_past_21": 80,
+      "duration_min": 412.8,
+      "resting_hr_bpm": 57.2,
+      "sleep_efficiency_pct": 92.9
+    }
+  ]
+}
