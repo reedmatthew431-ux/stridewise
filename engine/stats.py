@@ -167,8 +167,18 @@ def evaluate(pairs, effect_scale, floor, grain, anchor, prev_card=None,
     in_window = [(d, x, y) for (d, x, y) in pairs
                  if window_start is None or d >= window_start]
     n = len(in_window)
-    collected = collected_pairs if collected_pairs is not None else n
-    completeness = (n / collected) if collected else 1.0
+    # Completeness compares usable vs collected INSIDE the window.
+    # (An earlier version compared in-window usable against all-time
+    # collected, which wrongly failed long-history profiles: 110 usable
+    # pairs in-window out of 402 all-time pairs read as 27%.)
+    if isinstance(collected_pairs, (list, tuple)):
+        collected_n = len([p for p in collected_pairs
+                           if window_start is None or p[0] >= window_start])
+    elif collected_pairs is not None:
+        collected_n = collected_pairs
+    else:
+        collected_n = n
+    completeness = (n / collected_n) if collected_n else 1.0
 
     result = {
         "effect": None, "likely_range": [None, None], "n": n,

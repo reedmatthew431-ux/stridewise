@@ -89,6 +89,29 @@ class TestCaps(unittest.TestCase):
         self.assertEqual(res["tier"], "insufficient_data")
 
 
+class TestCompletenessWindow(unittest.TestCase):
+    def test_long_history_does_not_break_completeness(self):
+        # Regression: completeness must compare usable vs collected
+        # INSIDE the window. An earlier version compared in-window
+        # usable (110) against all-time collected (402) and wrongly
+        # failed a strong-evidence profile at 27%.
+        pairs = []
+        d = date(2025, 1, 1)
+        for i in range(292):  # old history, outside the window
+            pairs.append((d, float(i), 500.0 - 2.0 * i))
+            d += timedelta(days=1)
+        anchor = date(2026, 10, 25)
+        d = anchor - timedelta(days=109)
+        for i in range(110):  # dense in-window evidence, clear slope
+            pairs.append((d, float(i), 500.0 - 2.0 * i))
+            d += timedelta(days=1)
+        res = evaluate(pairs, 60.0, 15.0, "nightly", anchor,
+                       collected_pairs=pairs)
+        # 110 usable in-window pairs must NOT read as 110/402 = 27%.
+        self.assertEqual(res["tier"], "solid")
+        self.assertEqual(res["binding_rule"], "all gates passed")
+
+
 class TestDemotion(unittest.TestCase):
     def test_solid_to_emerging_demotes(self):
         ath_full = load_fixture("fixtures/validation-fixture-1.json")

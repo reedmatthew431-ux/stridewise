@@ -584,7 +584,7 @@ def run_question(athlete, qid, prev_card=None):
     else:
         floor = floor_spec[1]
     ev = evaluate(usable, scale, floor, grain, anchor, prev_card=prev_card,
-                  collected_pairs=len(collected))
+                  collected_pairs=collected)
     card.update({k: ev[k] for k in
                  ("effect", "likely_range", "n", "tier", "binding_rule", "demotion")})
     card["density"] = ev.get("density")
@@ -726,17 +726,28 @@ def race_cards(athlete):
 
 
 def aggregates(athlete, weeks):
-    """Board header aggregates (same weekly math as Family B)."""
+    """Board header aggregates (same weekly math as Family B).
+
+    Sleep/RHR averages cover the last 180 days from the anchor (the
+    nightly analysis window), not all-time history. Mileage covers the
+    built weeks, which span the athlete's activity coverage (shorter
+    than 26 weeks for short-history profiles); the key is named
+    accordingly, never implying 26 weeks of data that is not there.
+    """
     anchor = athlete.anchor_date
-    sleep = [n for n in athlete.sleep_nights if not n.excluded_sensor_unreliable]
+    win_start = anchor - timedelta(days=179) if anchor else None
+    sleep = [n for n in athlete.sleep_nights
+             if not n.excluded_sensor_unreliable
+             and (win_start is None or n.wake_date >= win_start)]
     rhr = [d.resting_hr_bpm for d in athlete.daily
-           if d.resting_hr_bpm is not None]
+           if d.resting_hr_bpm is not None
+           and (win_start is None or d.date >= win_start)]
     total_miles = sum(w.mileage_m for w in weeks) / 1609.34 if weeks else 0.0
     long_run_weeks = sum(1 for w in weeks if w.long_run_m)
     biggest = max((w.mileage_m for w in weeks), default=0.0) / 1609.34
     return {
         "window_anchor": str(anchor) if anchor else None,
-        "total_miles_26w": round(total_miles, 1),
+        "total_miles_in_span": round(total_miles, 1),
         "avg_sleep_min": round(statistics.mean([n.duration_min for n in sleep]), 1)
         if sleep else None,
         "avg_rhr": round(statistics.mean(rhr), 1) if rhr else None,
