@@ -31,6 +31,10 @@ reason.
   card sentences, and race-context cards.
 - `engine/factpack.py` — fact-pack assembly (the only thing the
   narrative layer ever sees).
+- `adapters/garmin.py` — Garmin GDPR "Download Your Data" JSON
+  summaries -> normalized JSON (activities, sleep, daily RHR).
+  Reads whitelisted scalar fields only; never opens FIT archives,
+  never reads coordinates, routes, or location names.
 - `engine/validate.py` — fixture validation runner.
 - `tests/test_engine.py` — fixture recovery, cap, and demotion tests.
 - `fixtures/validation-fixture-1.json` — SYNTHETIC validation data
@@ -68,6 +72,23 @@ profiles are injected at deploy time from the workspace, never committed.
   not part of this track: C4 emits the result with
   `prediction_range = null` and an explicit reason, never a fabricated
   range.
+- **Garmin adapter decisions** (verified against the export, not
+  assumed): activity duration is in milliseconds and distance in
+  centimeters (distance/duration reproduces stored avgSpeed on
+  1151/1157 checkable records; the 6 exceptions are lap_swimming,
+  where Garmin's avgSpeed uses a different basis; no run affected).
+  Activity dates are local dates from startTimeLocal (local
+  wall-clock packed into epoch ms). Sleep GMT timestamps convert to
+  America/New_York; the converted local end date equals calendarDate
+  on all 755 records, confirming calendarDate is the wake date (the
+  adapter still trusts the conversion, not the label). Sleep
+  duration is deep+light+REM seconds only; efficiency is null (no
+  reported field, no proxy derived). Daily RHR is UDS
+  restingHeartRate, the finalized day value, not
+  currentDayRestingHeartRate (intraday estimate; differs on 520/655
+  days by 1-3 bpm). HRV is null: no HRV field exists in UDS or
+  bioMetrics_latest. Garmin's own race predictions, training
+  history, and scores are deliberately never read.
 - **Load -> sleep questions are OUT by design** and are never offered.
 - Windows anchor at the profile's latest data date (frozen imports),
   not the wall clock.
