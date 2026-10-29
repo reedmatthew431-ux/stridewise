@@ -31,6 +31,10 @@ reason.
   card sentences, and race-context cards.
 - `engine/factpack.py` — fact-pack assembly (the only thing the
   narrative layer ever sees).
+- `engine/calibrate.py` — in-app course calibration for race card
+  C1 (see "Course calibration" below). The one module that touches
+  the network; the statistics engine itself stays zero-API,
+  zero-network.
 - `adapters/garmin.py` — Garmin GDPR "Download Your Data" JSON
   summaries -> normalized JSON (activities, sleep, daily RHR).
   Reads whitelisted scalar fields only; never opens FIT archives,
@@ -46,6 +50,39 @@ reason.
 python -m engine.validate            # fixture validation report
 python -m unittest discover -s tests -v
 ```
+
+## Course calibration (C1)
+
+A race entry in a normalized profile can carry a `results_url`
+(TFRRS meet-results page) and a `calibration_table` (a substring of
+that page's individual-results heading, e.g. `"Men 8k Champ"`).
+Any such race is calibratable by the app itself:
+
+```bash
+python -m engine.calibrate <normalized.json> <race-date>
+```
+
+The run fetches the meet page, extracts the named
+individual-results table (finishers = rows with a parseable TIME
+column; DNF/no-time rows are excluded from the field size), then
+fetches each finisher's TFRRS profile for their best OTHER
+same-season 8K — the "8k" and "8.001k" event labels combined, this
+meet itself excluded. Per finisher,
+`pct_slower = (race_time − best_other) / best_other × 100`.
+`field_size` and `matched_finishers` are always written back to
+the race entry as real counts; the median pct is written back as
+`field_median_slow_pct` only when the display bar is met
+(matched ≥ 40 AND coverage ≥ 0.35) — the same bar the C1 card
+applies when rendering.
+
+Fetch discipline: stdlib urllib, descriptive User-Agent,
+sequential requests with a short delay, and every page cached
+under `~/workspace/hackathon/cache/tfrrs/` (workspace-only, never
+in the repo) keyed by URL hash and reused on re-runs. An HTTP 429
+or an obvious block page stops the run immediately with nothing
+written back — a partial matched count is reported as partial,
+never as final. Individual non-429 failures count that athlete as
+unmatched and the run continues.
 
 ## Code-only rule (from commit one)
 
