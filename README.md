@@ -66,14 +66,21 @@ The run fetches the meet page, extracts the named
 individual-results table (finishers = rows with a parseable TIME
 column; DNF/no-time rows are excluded from the field size), then
 fetches each finisher's TFRRS profile for their best OTHER
-same-season 8K — the "8k" and "8.001k" event labels combined, this
-meet itself excluded. Per finisher,
+same-season mark at the race's distance — event labels are chosen
+from the race entry's `distance_m` (8000 → the "8k" and "8.001k"
+labels combined; 5000 → "5k"), this meet itself excluded.
+Per finisher,
 `pct_slower = (race_time − best_other) / best_other × 100`.
 `field_size` and `matched_finishers` are always written back to
 the race entry as real counts; the median pct is written back as
 `field_median_slow_pct` only when the display bar is met
 (matched ≥ 40 AND coverage ≥ 0.35) — the same bar the C1 card
-applies when rendering.
+applies when rendering. If the same-season pass fails the bar, a
+fallback pass matches against pure last-season bests at the same
+labels (the pools are never mixed) under the same bar; the race
+entry's `reference_season` records which pool produced the shown
+result, and the card's sentence says "last season's bests" when
+the fallback produced it.
 
 Fetch discipline: stdlib urllib, descriptive User-Agent,
 sequential requests with a short delay, and every page cached

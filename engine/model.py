@@ -69,6 +69,7 @@ class Race:
     field_size: int | None = None
     matched_finishers: int | None = None
     field_median_slow_pct: float | None = None
+    reference_season: int | None = None
     conditions_note: str | None = None
 
 
@@ -185,6 +186,7 @@ def load_normalized(path: str) -> Athlete:
             matched_finishers=r.get("matched_finishers"),
             field_median_slow_pct=(None if r.get("field_median_slow_pct") is None
                                    else float(r["field_median_slow_pct"])),
+            reference_season=r.get("reference_season"),
             conditions_note=r.get("conditions_note"),
         ))
     return ath

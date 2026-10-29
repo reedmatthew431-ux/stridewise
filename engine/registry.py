@@ -789,32 +789,40 @@ def race_cards(athlete):
         c1_ok = (r.field_size and r.matched_finishers
                  and r.matched_finishers >= 40
                  and r.matched_finishers / r.field_size >= 0.35)
+        # A calibration written against last season's bests (the
+        # fallback pool) says so on the card. A missing
+        # reference_season means same-season (older entries).
+        is_fallback = (r.reference_season is not None
+                       and r.reference_season != r.date.year)
         c1 = {
             "question": "C1", "race": r.name, "date": str(r.date),
             "shown": bool(c1_ok),
+            "reference_season": r.reference_season,
             "field_median_slow_pct": r.field_median_slow_pct if c1_ok else None,
             "matched_finishers": r.matched_finishers,
             "field_size": r.field_size,
             "sentence": (
-                f"How fast was this course? Across {r.matched_finishers} of "
-                f"{r.field_size} finishers matched to a season best, the field "
-                f"ran a median of {r.field_median_slow_pct}% slower than those "
-                f"marks." if c1_ok else
-                "How fast was this course? The field hasn't been matched "
-                "to season bests yet, so no adjustment is shown."
+                f"The field ran a median of {r.field_median_slow_pct}% "
+                f"slower than their last season's bests "
+                f"({r.matched_finishers} of {r.field_size} matched)."
+                if c1_ok and is_fallback else
+                f"The field ran a median of {r.field_median_slow_pct}% "
+                f"slower than their season bests ({r.matched_finishers} "
+                f"of {r.field_size} matched)." if c1_ok else
+                "Course not measured yet — the field hasn't been matched "
+                "to season bests."
                 if r.matched_finishers is None or r.field_size is None else
-                f"How fast was this course? Only {r.matched_finishers} "
-                f"finishers could be matched to a season best "
-                f"({(r.matched_finishers / r.field_size * 100) if r.field_size else 0:.0f}% "
-                f"coverage) — not enough to measure the course reliably, so "
-                f"no adjustment is shown."),
+                f"Only {r.matched_finishers} of {r.field_size} finishers "
+                f"matched to a season best — too few to measure this "
+                f"course."),
         }
         c2 = {
             "question": "C2", "race": r.name, "date": str(r.date),
             "conditions_note": r.conditions_note,
-            "sentence": (f"Conditions: {r.conditions_note}."
+            "sentence": (f"Conditions (athlete's own words): "
+                         f"'{r.conditions_note}'."
                          if r.conditions_note else
-                         "Conditions: no conditions recorded for this race."),
+                         "Conditions: none recorded."),
         }
         # C3: flag when race HR is implausibly low vs run history.
         race_act = [a for a in athlete.activities
@@ -828,12 +836,12 @@ def race_cards(athlete):
             "race_avg_hr": race_hr,
             "typical_avg_hr": round(hr_mean, 1) if hr_mean else None,
             "sentence": (
-                f"Heart-rate data for this race looks unreliable: your watch "
-                f"read {race_hr} avg against a typical {round(hr_mean, 1)} "
-                f"across your runs. HR-based numbers for this day are flagged, "
-                f"not trusted." if flagged else
-                "Heart-rate data for this race looks consistent with your "
-                "run history."),
+                f"Heart rate looks unreliable for this race: {race_hr} "
+                f"bpm average is unusually low (typical "
+                f"{round(hr_mean, 1)}), so it isn't used as effort "
+                f"evidence." if flagged else
+                "Heart rate looks consistent with this profile's other "
+                "runs."),
         }
         t_str = (f"{int(r.finish_time_s // 60)}:{r.finish_time_s % 60:04.1f}"
                  if r.finish_time_s is not None else "not recorded")
@@ -844,9 +852,8 @@ def race_cards(athlete):
             "prediction_range": None,
             "prediction_reason": "prediction model not included in this track",
             "sentence": (
-                f"Your time: {t_str}. No flat-equivalent likely "
-                f"range is shown: the prediction model is not part of this "
-                f"build, and no range is fabricated in its place."),
+                f"Your time: {t_str}. No predicted range — this build "
+                f"doesn't estimate race times."),
         }
         # C5: pre-race sleep, T-1 = row dated race day, T-2 = race day - 1,
         # baseline = race-30..race-3 excluding featured (race T-1/T-2) nights.
@@ -890,14 +897,13 @@ def race_cards(athlete):
         }
         if len(base_dur) < 14 or len(base_bt) < 14:
             c5["sentence"] = (
-                "Pre-race sleep is shown without a reliable baseline "
-                "comparison: not enough prior sleep data for a reliable "
-                "28-night comparison.")
+                "Pre-race sleep without a baseline — not enough earlier "
+                "sleep data to compare against.")
         else:
             c5["sentence"] = (
-                "Pre-race sleep vs the prior 28-night baseline is shown "
-                "for context; this card does not grade sleep or claim "
-                "either night changed the result.")
+                "Pre-race sleep vs the prior 28-night baseline, for "
+                "context only — it doesn't grade the sleep or claim it "
+                "changed the result.")
         cards.extend([c1, c2, c3, c4, c5])
     return cards
 

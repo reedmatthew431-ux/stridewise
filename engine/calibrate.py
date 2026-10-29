@@ -13,14 +13,24 @@ the app itself:
    only, never the split columns). DNF / no-time rows are excluded
    from the field size. Names link to athlete profiles.
 2. Fetch each finisher's TFRRS profile and find their best OTHER
-   2026-season 8K, combining the "8k" and "8.001k" event labels and
-   excluding this meet itself. Season = the race's calendar year.
+   same-season mark at the race's distance, excluding this meet
+   itself. Event labels are chosen from the race entry's
+   `distance_m`: 8000 -> "8k" + "8.001k"; 5000 -> "5k".
+   Season = the race's calendar year.
 3. pct_slower = (race_time - best_other) / best_other * 100.
    matched = finishers with a profile AND a best found.
    coverage = matched / field_size.
    Display bar: matched >= 40 AND coverage >= 0.35. Only then is the
    median pct written back as `field_median_slow_pct`; `field_size`
    and `matched_finishers` are always written back as real counts.
+4. Last-season fallback: if the same-season pass fails the bar, a
+   second pass matches against PURE last-season (year - 1) bests at
+   the same labels, under the same bar. The two pools are never
+   mixed — a shown median comes entirely from one pass.
+   `reference_season` records which pool produced the written
+   result (race year for same-season, year - 1 for the fallback);
+   if neither pass clears the bar, the same-season matched count
+   and reference stay the record.
 
 Fetch discipline: stdlib urllib with a descriptive User-Agent,
 sequential requests with a short delay, and every fetched page
@@ -52,7 +62,7 @@ CACHE_DIR = os.path.expanduser("~/workspace/hackathon/cache/tfrrs")
 USER_AGENT = ("Stridewise/1.0 (in-app course calibration; "
               "+https://stridewise.pages.dev)")
 FETCH_DELAY_S = 0.15
-EVENT_LABELS = {"8k", "8.001k"}
+LABELS_BY_DISTANCE_M = {8000: {"8k", "8.001k"}, 5000: {"5k"}}
 MIN_MATCHED = 40
 MIN_COVERAGE = 0.35
 SPOT_SURNAMES = ("Hoyer", "Shibles")
@@ -190,12 +200,25 @@ def _results_id(url: str | None) -> str | None:
     return m.group(1) if m else None
 
 
-def best_other_8k(profile_html: str, race_date: date,
-                  results_url: str) -> float | None:
-    """Best other same-season 8K/8.001K from a profile's meet results.
+def labels_for_distance(distance_m) -> set[str] | None:
+    """TFRRS event labels for a race distance, or None if unsupported."""
+    if distance_m is None:
+        return None
+    return LABELS_BY_DISTANCE_M.get(int(round(distance_m)))
 
-    Excludes this meet (same results-page id, or same date). Returns
-    seconds, or None if no qualifying mark exists.
+
+def _best_mark(profile_html: str, race_date: date, results_url: str,
+               labels: set[str], season_year: int,
+               strict_season: bool) -> float | None:
+    """Shared scan of a profile's meet-results pane for a best mark.
+
+    strict_season=False (the primary, same-season pass): exclude this
+    meet (same results-page id, or same date) and skip dated rows
+    outside season_year. strict_season=True (the last-season
+    fallback): the pool is PURE season_year — a meet table counts
+    only when its date parses and falls in season_year; this-meet
+    exclusion is irrelevant (different year) and not applied.
+    Returns seconds, or None if no qualifying mark exists.
     """
     start = profile_html.find('id="meet-results"')
     if start < 0:
@@ -212,22 +235,81 @@ def best_other_8k(profile_html: str, race_date: date,
         meet_url = head.group(1)
         meet_date = _parse_profile_date(_strip(tbl[:tbl.find("</thead>")])
                                         if "</thead>" in tbl else tbl[:600])
-        if _results_id(meet_url) == this_id and this_id is not None:
-            continue  # this meet itself
-        if meet_date is not None and meet_date == race_date:
-            continue  # same-day mark: this meet under another posting
-        if meet_date is not None and meet_date.year != race_date.year:
-            continue  # not this season
+        if strict_season:
+            if meet_date is None or meet_date.year != season_year:
+                continue  # fallback pool is purely season_year rows
+        else:
+            if _results_id(meet_url) == this_id and this_id is not None:
+                continue  # this meet itself
+            if meet_date is not None and meet_date == race_date:
+                continue  # same-day mark: this meet under another posting
+            if meet_date is not None and meet_date.year != season_year:
+                continue  # not the target season
         for row in re.findall(r"<tr[^>]*>(.*?)</tr>", tbl, re.S):
             cells = re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)
             if len(cells) < 2:
                 continue
-            if _strip(cells[0]).lower() not in EVENT_LABELS:
+            if _strip(cells[0]).lower() not in labels:
                 continue
             t = parse_time(_strip(cells[1]))
             if t is not None and (best is None or t < best):
                 best = t
     return best
+
+
+def best_other_mark(profile_html: str, race_date: date,
+                    results_url: str, labels: set[str]) -> float | None:
+    """Best other same-season mark at the race's distance.
+
+    `labels` are the TFRRS event labels for that distance (see
+    labels_for_distance). Excludes this meet (same results-page id,
+    or same date). Returns seconds, or None if no qualifying mark
+    exists.
+    """
+    return _best_mark(profile_html, race_date, results_url, labels,
+                      race_date.year, strict_season=False)
+
+
+def best_last_season_mark(profile_html: str, race_date: date,
+                          results_url: str,
+                          labels: set[str]) -> float | None:
+    """Best last-season mark at the same labels (fallback pass only).
+
+    Pure last-season pool: every reference is a mark from
+    race_date.year - 1. Never mixed with same-season references.
+    """
+    return _best_mark(profile_html, race_date, results_url, labels,
+                      race_date.year - 1, strict_season=True)
+
+
+def match_pass(finishers: list[dict], stats: dict, best_fn,
+               progress: dict) -> None:
+    """One matching pass over the field against one reference pool.
+
+    Fills progress["pcts"], progress["per_finisher"] and
+    progress["attempted"] in place (so a Blocked stop still leaves
+    the partial state readable). Raises Blocked.
+    """
+    field_size = len(finishers)
+    for i, fin in enumerate(finishers, 1):
+        if fin["profile_url"] is None:
+            progress["per_finisher"][fin["name"]] = {"matched": False}
+            continue
+        progress["attempted"] += 1
+        page = fetch(fin["profile_url"], stats)
+        best = best_fn(page) if page is not None else None
+        if best is None:
+            progress["per_finisher"][fin["name"]] = {"matched": False}
+        else:
+            pct = (fin["race_time_s"] - best) / best * 100.0
+            progress["pcts"].append(pct)
+            progress["per_finisher"][fin["name"]] = {
+                "matched": True, "race_time_s": fin["race_time_s"],
+                "best_other_s": best, "pct_slower": round(pct, 2)}
+        if i % 25 == 0:
+            print(f"  profiles {i}/{field_size} "
+                  f"(matched so far: {len(progress['pcts'])})",
+                  file=sys.stderr)
 
 
 def calibrate(normalized_path: str, race_date_s: str) -> int:
@@ -244,6 +326,11 @@ def calibrate(normalized_path: str, race_date_s: str) -> int:
         print(json.dumps({"error": "race entry lacks results_url / "
                                    "calibration_table"}))
         return 2
+    labels = labels_for_distance(race.get("distance_m"))
+    if labels is None:
+        print(json.dumps({"error": "unsupported race distance for "
+                                   f"calibration: {race.get('distance_m')!r}"}))
+        return 2
     race_date = date.fromisoformat(race_date_s)
     stats = {"fetched_live": 0, "from_cache": 0, "failures": 0}
 
@@ -258,41 +345,66 @@ def calibrate(normalized_path: str, race_date_s: str) -> int:
           f"{sum(1 for f in finishers if f['profile_url'])} with profiles",
           file=sys.stderr)
 
-    pcts: list[float] = []
-    per_finisher: dict[str, dict] = {}
-    attempted = 0
-    try:
-        for i, fin in enumerate(finishers, 1):
-            if fin["profile_url"] is None:
-                per_finisher[fin["name"]] = {"matched": False}
-                continue
-            attempted += 1
-            page = fetch(fin["profile_url"], stats)
-            best = (best_other_8k(page, race_date, results_url)
-                    if page is not None else None)
-            if best is None:
-                per_finisher[fin["name"]] = {"matched": False}
-            else:
-                pct = (fin["race_time_s"] - best) / best * 100.0
-                pcts.append(pct)
-                per_finisher[fin["name"]] = {
-                    "matched": True, "race_time_s": fin["race_time_s"],
-                    "best_other_s": best, "pct_slower": round(pct, 2)}
-            if i % 25 == 0:
-                print(f"  profiles {i}/{field_size} "
-                      f"(matched so far: {len(pcts)})", file=sys.stderr)
-    except Blocked as exc:
-        print(json.dumps({
-            "blocked": True, "reason": str(exc),
+    def fresh_progress() -> dict:
+        return {"pcts": [], "per_finisher": {}, "attempted": 0}
+
+    def pass_stats(prog: dict) -> dict:
+        m = len(prog["pcts"])
+        cov = m / field_size if field_size else 0.0
+        return {"matched": m, "coverage": round(cov, 4),
+                "median": (round(statistics.median(prog["pcts"]), 1)
+                           if prog["pcts"] else None),
+                "bar_met": m >= MIN_MATCHED and cov >= MIN_COVERAGE}
+
+    def blocked_payload(exc: Blocked, prog: dict, pass_name: str) -> dict:
+        return {
+            "blocked": True, "reason": str(exc), "pass": pass_name,
             "field_size": field_size,
-            "profiles_attempted": attempted,
+            "profiles_attempted": prog["attempted"],
             "profiles_total": sum(1 for f in finishers
                                   if f["profile_url"]),
-            "matched_so_far_partial": len(pcts),
+            "matched_so_far_partial": len(prog["pcts"]),
             "fetch_failures": stats["failures"],
             "note": "partial state only; nothing written back",
-        }, indent=2))
+        }
+
+    # Pass 1 (primary): same-season references, exactly as built.
+    prog = fresh_progress()
+    try:
+        match_pass(finishers, stats,
+                   lambda page: best_other_mark(page, race_date,
+                                                results_url, labels),
+                   prog)
+    except Blocked as exc:
+        print(json.dumps(blocked_payload(exc, prog, "same_season"),
+                         indent=2))
         return 3
+    primary = pass_stats(prog)
+    pcts, per_finisher = prog["pcts"], prog["per_finisher"]
+    reference_season = race_date.year
+
+    # Pass 2 (fallback, only if the primary bar failed): pure
+    # last-season references. The pools are never mixed — a shown
+    # median comes entirely from one pass.
+    fallback = None
+    if not primary["bar_met"]:
+        print("primary bar not met; running last-season fallback pass",
+              file=sys.stderr)
+        prog2 = fresh_progress()
+        try:
+            match_pass(finishers, stats,
+                       lambda page: best_last_season_mark(
+                           page, race_date, results_url, labels),
+                       prog2)
+        except Blocked as exc:
+            payload = blocked_payload(exc, prog2, "last_season_fallback")
+            payload["same_season"] = primary
+            print(json.dumps(payload, indent=2))
+            return 3
+        fallback = pass_stats(prog2)
+        if fallback["bar_met"]:
+            pcts, per_finisher = prog2["pcts"], prog2["per_finisher"]
+            reference_season = race_date.year - 1
 
     matched = len(pcts)
     coverage = matched / field_size if field_size else 0.0
@@ -303,6 +415,7 @@ def calibrate(normalized_path: str, race_date_s: str) -> int:
     race["matched_finishers"] = matched
     if bar_met:
         race["field_median_slow_pct"] = median
+    race["reference_season"] = reference_season
     with open(normalized_path, "w") as fh:
         json.dump(data, fh, indent=1)
 
@@ -318,10 +431,15 @@ def calibrate(normalized_path: str, race_date_s: str) -> int:
             spot[surname.lower()] = None
     print(json.dumps({
         "race_date": race_date_s, "race": race.get("name", ""),
+        "distance_m": race.get("distance_m"),
+        "labels": sorted(labels),
         "field_size": field_size, "matched": matched,
         "coverage": round(coverage, 4),
         "median_slow_pct": median if bar_met else None,
         "bar_met": bar_met,
+        "reference_season": reference_season,
+        "same_season": primary,
+        "last_season_fallback": fallback,
         "fetch_failures": stats["failures"],
         "profiles_fetched_live": stats["fetched_live"],
         "profiles_from_cache": stats["from_cache"],
