@@ -75,7 +75,12 @@ Per finisher,
 the race entry as real counts; the median pct is written back as
 `field_median_slow_pct` only when the display bar is met
 (matched ≥ 40 AND coverage ≥ 0.35) — the same bar the C1 card
-applies when rendering. If the same-season pass fails the bar, a
+applies when rendering. When the bar is met, C1 also stores the
+shown pool's distribution stats (`field_slow_share_pct` /
+`field_fast_share_pct` — the shares of matched finishers who ran
+slower / faster than their best — and the 25th/75th percentiles
+`field_pct_p25` / `field_pct_p75`); bar-failed entries keep
+counts only, with no distribution fields. If the same-season pass fails the bar, a
 fallback pass matches against pure last-season bests at the same
 labels (the pools are never mixed) under the same bar; the race
 entry's `reference_season` records which pool produced the shown

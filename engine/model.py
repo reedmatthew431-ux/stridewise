@@ -69,6 +69,10 @@ class Race:
     field_size: int | None = None
     matched_finishers: int | None = None
     field_median_slow_pct: float | None = None
+    field_slow_share_pct: float | None = None
+    field_fast_share_pct: float | None = None
+    field_pct_p25: float | None = None
+    field_pct_p75: float | None = None
     reference_season: int | None = None
     conditions_note: str | None = None
     place: int | None = None
@@ -191,6 +195,14 @@ def load_normalized(path: str) -> Athlete:
             matched_finishers=r.get("matched_finishers"),
             field_median_slow_pct=(None if r.get("field_median_slow_pct") is None
                                    else float(r["field_median_slow_pct"])),
+            field_slow_share_pct=(None if r.get("field_slow_share_pct") is None
+                                  else float(r["field_slow_share_pct"])),
+            field_fast_share_pct=(None if r.get("field_fast_share_pct") is None
+                                  else float(r["field_fast_share_pct"])),
+            field_pct_p25=(None if r.get("field_pct_p25") is None
+                           else float(r["field_pct_p25"])),
+            field_pct_p75=(None if r.get("field_pct_p75") is None
+                           else float(r["field_pct_p75"])),
             reference_season=r.get("reference_season"),
             conditions_note=r.get("conditions_note"),
             place=r.get("place"),

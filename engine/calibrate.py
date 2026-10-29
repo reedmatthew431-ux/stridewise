@@ -21,8 +21,11 @@ the app itself:
    matched = finishers with a profile AND a best found.
    coverage = matched / field_size.
    Display bar: matched >= 40 AND coverage >= 0.35. Only then is the
-   median pct written back as `field_median_slow_pct`; `field_size`
-   and `matched_finishers` are always written back as real counts.
+   median pct written back as `field_median_slow_pct`, together with
+   the distribution of the shown pool (the share of matched
+   finishers who ran slower / faster than their best, and the
+   25th/75th percentiles of their pcts); `field_size` and
+   `matched_finishers` are always written back as real counts.
 4. Last-season fallback: if the same-season pass fails the bar, a
    second pass matches against PURE last-season (year - 1) bests at
    the same labels, under the same bar. The two pools are never
@@ -447,6 +450,34 @@ def match_pass(finishers: list[dict], stats: dict, best_fn,
                   file=sys.stderr)
 
 
+DISTRIBUTION_FIELDS = ("field_slow_share_pct", "field_fast_share_pct",
+                       "field_pct_p25", "field_pct_p75")
+
+
+def distribution_stats(pcts: list[float]) -> dict:
+    """Distribution of one matching pool's pct_slower values.
+
+    Shares are computed from counts (exact-zero pcts count in
+    neither share). Percentiles use statistics.quantiles with
+    method="inclusive". Values rounded to 1 decimal; percentile
+    fields are None with fewer than 2 observations.
+    """
+    n = len(pcts)
+    out = {"n": n,
+           "min": round(min(pcts), 1) if pcts else None,
+           "max": round(max(pcts), 1) if pcts else None,
+           "slow_share_pct": (round(100.0 * sum(1 for p in pcts if p > 0)
+                                    / n, 1) if n else None),
+           "fast_share_pct": (round(100.0 * sum(1 for p in pcts if p < 0)
+                                    / n, 1) if n else None),
+           "p25": None, "p75": None}
+    if n >= 2:
+        cuts = statistics.quantiles(pcts, n=4, method="inclusive")
+        out["p25"] = round(cuts[0], 1)
+        out["p75"] = round(cuts[2], 1)
+    return out
+
+
 def calibrate(normalized_path: str, race_date_s: str) -> int:
     with open(normalized_path) as fh:
         data = json.load(fh)
@@ -534,7 +565,8 @@ def calibrate(normalized_path: str, race_date_s: str) -> int:
         return {"matched": m, "coverage": round(cov, 4),
                 "median": (round(statistics.median(prog["pcts"]), 1)
                            if prog["pcts"] else None),
-                "bar_met": m >= MIN_MATCHED and cov >= MIN_COVERAGE}
+                "bar_met": m >= MIN_MATCHED and cov >= MIN_COVERAGE,
+                "distribution": distribution_stats(prog["pcts"])}
 
     def blocked_payload(exc: Blocked, prog: dict, pass_name: str) -> dict:
         return {
@@ -591,10 +623,20 @@ def calibrate(normalized_path: str, race_date_s: str) -> int:
     bar_met = matched >= MIN_MATCHED and coverage >= MIN_COVERAGE
     median = round(statistics.median(pcts), 1) if pcts else None
 
+    dist = distribution_stats(pcts)
     race["field_size"] = field_size
     race["matched_finishers"] = matched
     if bar_met:
         race["field_median_slow_pct"] = median
+        race["field_slow_share_pct"] = dist["slow_share_pct"]
+        race["field_fast_share_pct"] = dist["fast_share_pct"]
+        race["field_pct_p25"] = dist["p25"]
+        race["field_pct_p75"] = dist["p75"]
+    else:
+        # No shown result: no distribution fields may linger from
+        # an earlier state.
+        for key in DISTRIBUTION_FIELDS:
+            race.pop(key, None)
     race["reference_season"] = reference_season
     if capture["status"] == "ok":
         race["place"] = capture["place"]
@@ -626,6 +668,7 @@ def calibrate(normalized_path: str, race_date_s: str) -> int:
         "field_size": field_size, "matched": matched,
         "coverage": round(coverage, 4),
         "median_slow_pct": median if bar_met else None,
+        "distribution": dist,
         "bar_met": bar_met,
         "reference_season": reference_season,
         "same_season": primary,

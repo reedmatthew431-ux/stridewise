@@ -812,6 +812,34 @@ def race_cards(athlete):
         shown_txt = (f"The field ran a median of {_dir} than their "
                      f"{_ref} ({r.matched_finishers} of {r.field_size} "
                      f"matched).")
+        # Distribution clauses (shown calibrations only): how much
+        # of the field the course slowed, and how wide the middle
+        # half ran. Older entries without distribution fields skip
+        # them gracefully.
+        dist_txt = ""
+        if (c1_ok and r.field_slow_share_pct is not None
+                and r.field_fast_share_pct is not None
+                and r.field_pct_p25 is not None
+                and r.field_pct_p75 is not None):
+            if r.field_slow_share_pct >= r.field_fast_share_pct:
+                dist_txt += (
+                    f" {round(r.field_slow_share_pct)}% of matched "
+                    f"finishers ran slower than their best.")
+            else:
+                dist_txt += (
+                    f" {round(r.field_fast_share_pct)}% of matched "
+                    f"finishers ran faster than their best.")
+
+            def _fmt_bound(v):
+                if v > 0:
+                    return f"{abs(v):.1f}% slower"
+                if v < 0:
+                    return f"{abs(v):.1f}% faster"
+                return "their best time exactly"
+            dist_txt += (
+                f" The middle half ran between "
+                f"{_fmt_bound(r.field_pct_p25)} and "
+                f"{_fmt_bound(r.field_pct_p75)}.")
         # Own performance vs his own season best at this distance,
         # from his own race list alone (no fetching). Appended to
         # whichever C1 sentence the calibration state produced.
@@ -842,10 +870,14 @@ def race_cards(athlete):
             "shown": bool(c1_ok),
             "reference_season": r.reference_season,
             "field_median_slow_pct": r.field_median_slow_pct if c1_ok else None,
+            "field_slow_share_pct": r.field_slow_share_pct if c1_ok else None,
+            "field_fast_share_pct": r.field_fast_share_pct if c1_ok else None,
+            "field_pct_p25": r.field_pct_p25 if c1_ok else None,
+            "field_pct_p75": r.field_pct_p75 if c1_ok else None,
             "matched_finishers": r.matched_finishers,
             "field_size": r.field_size,
             "sentence": (
-                (shown_txt if c1_ok else
+                (shown_txt + dist_txt if c1_ok else
                  "Course not measured yet — the field hasn't been matched "
                  "to season bests."
                  if r.matched_finishers is None or r.field_size is None else
