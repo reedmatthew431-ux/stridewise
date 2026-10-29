@@ -1,15 +1,15 @@
 """Stridewise insight registry (v1, closed 2026-10-22; A9 added 2026-10-28;
-A10/A11/B8 added 2026-10-28):
-24 questions.
+A10/A11/B8/A12/A13/B9 added 2026-10-28):
+27 questions.
 
-Family A (sleep, 11): A1 bedtime -> duration; A2 bedtime variability ->
+Family A (sleep, 13): A1 bedtime -> duration; A2 bedtime variability ->
 next-morning RHR; A3 duration -> next-day RHR; A4 duration -> next-day
 run quality; A5 sleep consistency -> next-day run quality; A6 bedtime ->
 efficiency (source-aware); A7 sleep-regularity (midpoint scatter) ->
 RHR / run quality; A8 social jetlag -> Sunday-night duration / Monday
 run quality; A9 awake time in bed -> next-morning RHR; A10 weekend
 nights -> sleep length; A11 awake time in bed -> next-morning HRV.
-Family B (training load, 8): B1 ramp (ACWR) -> next-week run quality;
+Family B (training load, 9): B1 ramp (ACWR) -> next-week run quality;
 B2 monotony -> next-week RHR trend; B3 mileage volatility -> following
 -week run quality; B4 long-run share -> late-run fade; B5 training
 regularity -> fitness trend; B6 heat sensitivity (temp -> pace-at-HR
@@ -58,6 +58,16 @@ Pair-construction decisions (documented, not in the registry draft):
   bootstrap handles the clustering.
 - B8's outcome is next week's mean RHR LEVEL (not change, unlike B2's
   monotony -> trend). Driver is weekly run mileage in km (scale 10).
+- A12 is the LEVEL sibling of A7's midpoint VARIABILITY question:
+  driver is sleep-midpoint clock (bedtime_min_past_21 + duration/2,
+  unwrapped so no midnight circularity). The three sweep-6 timing
+  emergings (bedtime, wake, midpoint) are one collinear signal, so
+  only midpoint is a question -- adding all three would triple-count
+  one finding.
+- A13 pairs each night with the previous night's duration (previous
+  night must be the immediately preceding wake date). B9's driver is
+  the week's qualifying long-run distance in km (scale 5); weeks
+  without a qualifying long run contribute no pair.
 - C4's flat-equivalent prediction range comes from the personal app's
   prediction model, which is NOT part of this track: C4 emits the
   result + calibration cross-reference with prediction_range = null
@@ -329,6 +339,33 @@ def b_A11(athlete):
     return usable, collected, ok, reason
 
 
+def b_A12(athlete):
+    sleep, daily = _nightly_base(athlete)
+    usable, collected = [], []
+    for n in athlete.sleep_nights:
+        d = n.wake_date
+        rhr = daily.get(d).resting_hr_bpm if daily.get(d) else None
+        if rhr is not None:
+            midpoint = n.bedtime_min_past_21 + n.duration_min / 2
+            collected.append((d, midpoint, rhr))
+            if not n.excluded_sensor_unreliable:
+                usable.append((d, midpoint, rhr))
+    return usable, collected, True, ""
+
+
+def b_A13(athlete):
+    by_date = {n.wake_date: n for n in athlete.sleep_nights}
+    usable, collected = [], []
+    for n in athlete.sleep_nights:
+        prev = by_date.get(n.wake_date - timedelta(days=1))
+        if prev is None:
+            continue
+        collected.append((n.wake_date, prev.duration_min, n.duration_min))
+        if not n.excluded_sensor_unreliable and not prev.excluded_sensor_unreliable:
+            usable.append((n.wake_date, prev.duration_min, n.duration_min))
+    return usable, collected, True, ""
+
+
 def _weeks(athlete):
     return build_weeks(athlete)
 
@@ -488,6 +525,22 @@ def b_B8(athlete):
     return usable, collected, ok, reason
 
 
+def b_B9(athlete):
+    weeks = _weeks(athlete)
+    usable, collected = [], []
+    for i, w in enumerate(weeks):
+        if w.long_run_m is None or i + 1 >= len(weeks):
+            continue
+        nxt = weeks[i + 1]
+        if nxt.mean_rhr is None:
+            continue
+        collected.append((w.monday, w.long_run_m / 1000.0, nxt.mean_rhr))
+        usable.append((w.monday, w.long_run_m / 1000.0, nxt.mean_rhr))
+    ok = len(usable) >= 6
+    reason = "" if ok else "not enough weeks with a long run"
+    return usable, collected, ok, reason
+
+
 # ------------------------------------------------------------- definitions
 
 # floor: ("abs", value) or ("pace_pct",) meaning 1% of mean outcome.
@@ -533,6 +586,12 @@ QUESTIONS = [
     ("A11", "sleep", "nightly", "Awake time in bed and next-morning heart rate variability",
      "more-awake nights", "less-awake nights", "next-morning HRV",
      "hrv", "nights", "180 days", 30.0, ("abs", 5.0)),
+    ("A12", "sleep", "nightly", "Sleep midpoint and next-morning resting heart rate",
+     "later-midpoint nights", "earlier-midpoint nights", "next-morning resting HR",
+     "hr", "nights", "180 days", 60.0, ("abs", 1.0)),
+    ("A13", "sleep", "nightly", "Previous night's sleep length and tonight's sleep length",
+     "longer previous nights", "shorter previous nights", "tonight's sleep length",
+     "duration", "nights", "180 days", 60.0, ("abs", 15.0)),
     ("B1", "load", "weekly", "Training ramp and next week's run quality",
      "higher-ramp weeks", "lower-ramp weeks", "next-week run pace",
      "pace", "weeks", "26 weeks", 1.0, ("pace_pct",)),
@@ -557,6 +616,9 @@ QUESTIONS = [
     ("B8", "load", "weekly", "Weekly mileage and next week's resting heart rate",
      "higher-mileage weeks", "lower-mileage weeks", "next-week resting HR",
      "hr", "weeks", "26 weeks", 10.0, ("abs", 1.0)),
+    ("B9", "load", "weekly", "Weekly long-run distance and next week's resting heart rate",
+     "longer-long-run weeks", "shorter-long-run weeks", "next-week resting HR",
+     "hr", "weeks", "26 weeks", 5.0, ("abs", 1.0)),
 ]
 
 BUILDERS = {
@@ -565,9 +627,9 @@ BUILDERS = {
     "A7-Quality": lambda a: b_A7(a, "quality"),
     "A8-Duration": lambda a: b_A8(a, "duration"),
     "A8-Quality": lambda a: b_A8(a, "quality"),
-    "A9": b_A9, "A10": b_A10, "A11": b_A11,
+    "A9": b_A9, "A10": b_A10, "A11": b_A11, "A12": b_A12, "A13": b_A13,
     "B1": b_B1, "B2": b_B2, "B3": b_B3, "B5": b_B5, "B6": b_B6, "B7": b_B7,
-    "B8": b_B8,
+    "B8": b_B8, "B9": b_B9,
 }
 
 EFFECT_UNITS = {
@@ -590,6 +652,9 @@ METHODS = {
     "A10": "Each night's weekend indicator (1 for wake dates Saturday/Sunday, 0 otherwise) paired with that night's sleep length; the slope is the weekend-minus-weekday mean difference. Effect is weekend minus weekday minutes, over the last 180 days, with a week-block bootstrap 95% likely range.",
     "A11": "Each night's awake time in bed paired with the next morning's heart rate variability (SDNN, where the source reports it). Effect is per 30 minutes awake in bed, over the last 180 days, with a week-block bootstrap 95% likely range.",
     "B8": "Each week's total run mileage paired with the following week's mean resting heart rate. Effect is per 10 km of weekly mileage, over the last 26 weeks, with a week-block bootstrap 95% likely range. Level, not change: this asks whether higher-mileage weeks precede lower RHR levels, distinct from B2's monotony -> trend question.",
+    "A12": "Each night's sleep midpoint (bedtime plus half the night's length, unwrapped so midnight never breaks the scale) paired with the next morning's resting heart rate. Effect is per hour later midpoint, over the last 180 days, with a week-block bootstrap 95% likely range.",
+    "A13": "Each night's length paired with the immediately preceding night's length. Effect is minutes of tonight's length per hour of last night's length, over the last 180 days, with a week-block bootstrap 95% likely range.",
+    "B9": "Each week's qualifying long-run distance paired with the following week's mean resting heart rate. Effect is per 5 km of long-run distance, over the last 26 weeks, with a week-block bootstrap 95% likely range. Weeks without a qualifying long run contribute no pair.",
     "B1": "Each week's ramp (that week's mileage divided by the mean of the prior 4 weeks' mileage) paired with the following week's mean run pace. Effect is per 1.0 of ramp, over the last 26 weeks, with a week-block bootstrap 95% likely range.",
     "B2": "Each week's monotony (mean daily mileage divided by its standard deviation) paired with the change in mean resting heart rate the following week. Effect is per 1.0 of monotony, over the last 26 weeks, with a week-block bootstrap 95% likely range.",
     "B3": "Each week's mileage swing (absolute change from the prior week, as a share) paired with the following week's mean run pace. Effect is per 10 percentage points of swing, over the last 26 weeks, with a week-block bootstrap 95% likely range.",
