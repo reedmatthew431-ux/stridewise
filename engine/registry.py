@@ -1,13 +1,15 @@
-"""Stridewise insight registry (v1, closed 2026-10-22; A9 added 2026-10-28):
-21 questions.
+"""Stridewise insight registry (v1, closed 2026-10-22; A9 added 2026-10-28;
+A10/A11/B8 added 2026-10-28):
+24 questions.
 
-Family A (sleep, 9): A1 bedtime -> duration; A2 bedtime variability ->
+Family A (sleep, 11): A1 bedtime -> duration; A2 bedtime variability ->
 next-morning RHR; A3 duration -> next-day RHR; A4 duration -> next-day
 run quality; A5 sleep consistency -> next-day run quality; A6 bedtime ->
 efficiency (source-aware); A7 sleep-regularity (midpoint scatter) ->
 RHR / run quality; A8 social jetlag -> Sunday-night duration / Monday
-run quality; A9 awake time in bed -> next-morning RHR.
-Family B (training load, 7): B1 ramp (ACWR) -> next-week run quality;
+run quality; A9 awake time in bed -> next-morning RHR; A10 weekend
+nights -> sleep length; A11 awake time in bed -> next-morning HRV.
+Family B (training load, 8): B1 ramp (ACWR) -> next-week run quality;
 B2 monotony -> next-week RHR trend; B3 mileage volatility -> following
 -week run quality; B4 long-run share -> late-run fade; B5 training
 regularity -> fitness trend; B6 heat sensitivity (temp -> pace-at-HR
@@ -50,6 +52,12 @@ Pair-construction decisions (documented, not in the registry draft):
   stages-era exports). InBed-minus-Asleep was tried for Apple and
   rejected: old InBed blocks span whole days (6-12h artifacts on 2023
   nights) and no InBed segments appear at all in 2026 windows.
+- A10's weekend indicator is a binary driver (1 = wake Sat/Sun, 0 =
+  weekday); the OLS slope IS the weekend-minus-weekday mean
+  difference, so no separate diff statistic is needed. Week-block
+  bootstrap handles the clustering.
+- B8's outcome is next week's mean RHR LEVEL (not change, unlike B2's
+  monotony -> trend). Driver is weekly run mileage in km (scale 10).
 - C4's flat-equivalent prediction range comes from the personal app's
   prediction model, which is NOT part of this track: C4 emits the
   result + calibration cross-reference with prediction_range = null
@@ -95,6 +103,8 @@ def _fmt(x, unit=""):
         return f"{abs(x):.1f} bpm"
     if unit == "pct":
         return f"{abs(x):.1f}%"
+    if unit == "ms":
+        return f"{abs(x):.1f} ms"
     if unit == "pts":
         return f"{abs(x):.1f} pts"
     if unit == "sec_km":
@@ -288,6 +298,37 @@ def b_A9(athlete):
         "your export has no awake time in bed" if not has_awake else ""
 
 
+def b_A10(athlete):
+    usable, collected = [], []
+    for n in athlete.sleep_nights:
+        driver = 1.0 if n.wake_date.weekday() >= 5 else 0.0
+        collected.append((n.wake_date, driver, n.duration_min))
+        if not n.excluded_sensor_unreliable:
+            usable.append((n.wake_date, driver, n.duration_min))
+    return usable, collected, True, ""
+
+
+def b_A11(athlete):
+    sleep, daily = _nightly_base(athlete)
+    has_hrv = any(d.hrv_ms is not None for d in athlete.daily)
+    has_awake = any(n.awake_min is not None for n in athlete.sleep_nights)
+    usable, collected = [], []
+    for n in athlete.sleep_nights:
+        d = n.wake_date
+        hrv = daily.get(d).hrv_ms if daily.get(d) else None
+        if n.awake_min is not None and hrv is not None:
+            collected.append((d, n.awake_min, hrv))
+            if not n.excluded_sensor_unreliable:
+                usable.append((d, n.awake_min, hrv))
+    ok = has_hrv and has_awake
+    reason = ""
+    if not has_awake:
+        reason = "your export has no awake time in bed"
+    elif not has_hrv:
+        reason = "your export has no heart rate variability"
+    return usable, collected, ok, reason
+
+
 def _weeks(athlete):
     return build_weeks(athlete)
 
@@ -425,6 +466,28 @@ def b_B7(athlete):
     return usable, collected, ok, reason
 
 
+def b_B8(athlete):
+    weeks = _weeks(athlete)
+    usable, collected = [], []
+    for i, w in enumerate(weeks):
+        if w.mileage_m is None or w.mean_rhr is None or i + 1 >= len(weeks):
+            continue
+        nxt = weeks[i + 1]
+        if nxt.mean_rhr is None:
+            continue
+        collected.append((w.monday, w.mileage_m / 1000.0, nxt.mean_rhr))
+        usable.append((w.monday, w.mileage_m / 1000.0, nxt.mean_rhr))
+    has_runs = any(w.mileage_m for w in weeks)
+    has_rhr = any(w.mean_rhr is not None for w in weeks)
+    ok = has_runs and has_rhr
+    reason = ""
+    if not has_runs:
+        reason = "no runs with distance data in the window"
+    elif not has_rhr:
+        reason = "your export has no resting heart rate"
+    return usable, collected, ok, reason
+
+
 # ------------------------------------------------------------- definitions
 
 # floor: ("abs", value) or ("pace_pct",) meaning 1% of mean outcome.
@@ -464,6 +527,12 @@ QUESTIONS = [
     ("A9", "sleep", "nightly", "Awake time in bed and next-morning resting heart rate",
      "more-awake nights", "less-awake nights", "next-morning resting HR",
      "hr", "nights", "180 days", 30.0, ("abs", 1.0)),
+    ("A10", "sleep", "nightly", "Weekend nights and sleep length",
+     "weekend nights", "weekday nights", "sleep length",
+     "duration", "nights", "180 days", 1.0, ("abs", 15.0)),
+    ("A11", "sleep", "nightly", "Awake time in bed and next-morning heart rate variability",
+     "more-awake nights", "less-awake nights", "next-morning HRV",
+     "hrv", "nights", "180 days", 30.0, ("abs", 5.0)),
     ("B1", "load", "weekly", "Training ramp and next week's run quality",
      "higher-ramp weeks", "lower-ramp weeks", "next-week run pace",
      "pace", "weeks", "26 weeks", 1.0, ("pace_pct",)),
@@ -485,6 +554,9 @@ QUESTIONS = [
     ("B7", "load", "nightly", "Morning resting heart rate and today's session",
      "higher-than-normal morning RHR days", "normal morning RHR days", "same-day run pace",
      "pace", "days", "180 days", 1.0, ("pace_pct",)),
+    ("B8", "load", "weekly", "Weekly mileage and next week's resting heart rate",
+     "higher-mileage weeks", "lower-mileage weeks", "next-week resting HR",
+     "hr", "weeks", "26 weeks", 10.0, ("abs", 1.0)),
 ]
 
 BUILDERS = {
@@ -493,13 +565,14 @@ BUILDERS = {
     "A7-Quality": lambda a: b_A7(a, "quality"),
     "A8-Duration": lambda a: b_A8(a, "duration"),
     "A8-Quality": lambda a: b_A8(a, "quality"),
-    "A9": b_A9,
+    "A9": b_A9, "A10": b_A10, "A11": b_A11,
     "B1": b_B1, "B2": b_B2, "B3": b_B3, "B5": b_B5, "B6": b_B6, "B7": b_B7,
+    "B8": b_B8,
 }
 
 EFFECT_UNITS = {
     "duration": "min", "hr": "bpm", "pace": "sec/km", "efficiency": "pts",
-    "pct": "%",
+    "pct": "%", "hrv": "ms",
 }
 
 METHODS = {
@@ -514,6 +587,9 @@ METHODS = {
     "A8-Duration": "Each week's weekend schedule shift (mean weekend sleep midpoint minus mean weekday midpoint) paired with the following Sunday night's sleep length. Effect is per hour of weekend shift, over the last 26 weeks, with a week-block bootstrap 95% likely range.",
     "A8-Quality": "Each week's weekend schedule shift paired with the following Monday's run pace. Effect is per hour of weekend shift, over the last 26 weeks, with a week-block bootstrap 95% likely range.",
     "A9": "Each night's awake time in bed (time in bed not asleep, where the source reports it) paired with the next morning's resting heart rate. Effect is per 30 minutes awake in bed, over the last 180 days, with a week-block bootstrap 95% likely range.",
+    "A10": "Each night's weekend indicator (1 for wake dates Saturday/Sunday, 0 otherwise) paired with that night's sleep length; the slope is the weekend-minus-weekday mean difference. Effect is weekend minus weekday minutes, over the last 180 days, with a week-block bootstrap 95% likely range.",
+    "A11": "Each night's awake time in bed paired with the next morning's heart rate variability (SDNN, where the source reports it). Effect is per 30 minutes awake in bed, over the last 180 days, with a week-block bootstrap 95% likely range.",
+    "B8": "Each week's total run mileage paired with the following week's mean resting heart rate. Effect is per 10 km of weekly mileage, over the last 26 weeks, with a week-block bootstrap 95% likely range. Level, not change: this asks whether higher-mileage weeks precede lower RHR levels, distinct from B2's monotony -> trend question.",
     "B1": "Each week's ramp (that week's mileage divided by the mean of the prior 4 weeks' mileage) paired with the following week's mean run pace. Effect is per 1.0 of ramp, over the last 26 weeks, with a week-block bootstrap 95% likely range.",
     "B2": "Each week's monotony (mean daily mileage divided by its standard deviation) paired with the change in mean resting heart rate the following week. Effect is per 1.0 of monotony, over the last 26 weeks, with a week-block bootstrap 95% likely range.",
     "B3": "Each week's mileage swing (absolute change from the prior week, as a share) paired with the following week's mean run pace. Effect is per 10 percentage points of swing, over the last 26 weeks, with a week-block bootstrap 95% likely range.",
