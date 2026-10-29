@@ -794,6 +794,15 @@ def race_cards(athlete):
         # reference_season means same-season (older entries).
         is_fallback = (r.reference_season is not None
                        and r.reference_season != r.date.year)
+        # Direction-aware: a negative median means the field ran
+        # FASTER than their bests; never print "-3.7% slower".
+        _pct = r.field_median_slow_pct
+        _dir = (f"{_pct}% slower" if _pct is not None and _pct >= 0
+                else f"{abs(_pct)}% faster" if _pct is not None else "")
+        _ref = "last season's bests" if is_fallback else "season bests"
+        shown_txt = (f"The field ran a median of {_dir} than their "
+                     f"{_ref} ({r.matched_finishers} of {r.field_size} "
+                     f"matched).")
         c1 = {
             "question": "C1", "race": r.name, "date": str(r.date),
             "shown": bool(c1_ok),
@@ -802,13 +811,7 @@ def race_cards(athlete):
             "matched_finishers": r.matched_finishers,
             "field_size": r.field_size,
             "sentence": (
-                f"The field ran a median of {r.field_median_slow_pct}% "
-                f"slower than their last season's bests "
-                f"({r.matched_finishers} of {r.field_size} matched)."
-                if c1_ok and is_fallback else
-                f"The field ran a median of {r.field_median_slow_pct}% "
-                f"slower than their season bests ({r.matched_finishers} "
-                f"of {r.field_size} matched)." if c1_ok else
+                shown_txt if c1_ok else
                 "Course not measured yet — the field hasn't been matched "
                 "to season bests."
                 if r.matched_finishers is None or r.field_size is None else
