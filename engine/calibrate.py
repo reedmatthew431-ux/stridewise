@@ -44,8 +44,12 @@ The same run also captures the profile athlete's own result
 context from the meet page: his row in the individual table is
 identified by an exact TIME match against the entry's
 `finish_time_s` (tolerance 0.05s) — exactly one match yields
-`place` and `team_name`; zero or multiple matches store nothing
-(never a guess). His team's standing comes from the matching
+`place` and `team_name`; zero matches store nothing (never a
+guess). Tied times (multiple TIME matches) are broken by team
+when the athlete block carries a `team` value: only rows for
+that team are kept, and a unique survivor is captured the same
+way; a tie that survives the filter still stores nothing. His
+team's standing comes from the matching
 team-results table (`team_place` / `team_field`, counting placed
 teams only — unplaced/DNF team rows are not part of the field,
 mirroring the individual DNF rule), and `team_position` is his
@@ -488,6 +492,15 @@ def calibrate(normalized_path: str, race_date_s: str) -> int:
         hits = [f for f in detailed
                 if abs(f["race_time_s"] - target) <= 0.05]
         capture["matches"] = len(hits)
+        if len(hits) > 1:
+            # Tied times: if the profile carries a team, keep only
+            # that team's rows; a unique survivor identifies him.
+            team_hint = (data.get("athlete") or {}).get("team")
+            if team_hint:
+                tied = [f for f in hits if f["team"] == team_hint]
+                if len(tied) == 1:
+                    capture["tie_broken_by_team"] = team_hint
+                    hits = tied
         if len(hits) == 1:
             his = hits[0]
             capture.update(status="ok", place=his["place"],

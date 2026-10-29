@@ -83,7 +83,9 @@ result, and the card's sentence says "last season's bests" when
 the fallback produced it. The same run also captures the profile
 athlete's own result context from the meet page — his `place` and
 `team_name` (identified by an exact TIME match against the
-entry's finish time; zero or multiple matches store nothing),
+entry's finish time; tied times are broken by the athlete
+block's `team` value when it leaves a unique row, otherwise
+zero or multiple matches store nothing),
 his team's standing in the matching team-results table
 (`team_place` / `team_field`, placed teams only), and his
 `team_position` among his own team's finishers.
