@@ -28,6 +28,7 @@ class SleepNight:
     duration_min: float
     bedtime_min_past_21: float  # unwrapped: 20:00 -> -60, 21:00 -> 0, 00:30 -> 210
     sleep_efficiency_pct: float | None = None
+    awake_min: float | None = None  # time in bed not asleep, where reported
     excluded_sensor_unreliable: bool = False
     exclusion_reason: str | None = None
 
@@ -150,6 +151,8 @@ def load_normalized(path: str) -> Athlete:
             bedtime_min_past_21=float(n["bedtime_min_past_21"]),
             sleep_efficiency_pct=(None if n.get("sleep_efficiency_pct") is None
                                   else float(n["sleep_efficiency_pct"])),
+            awake_min=(None if n.get("awake_min") is None
+                       else float(n["awake_min"])),
             excluded_sensor_unreliable=bool(n.get("excluded_sensor_unreliable", False)),
             exclusion_reason=n.get("exclusion_reason"),
         ))

@@ -1,11 +1,12 @@
-"""Stridewise insight registry (v1, closed 2026-10-22): 20 questions.
+"""Stridewise insight registry (v1, closed 2026-10-22; A9 added 2026-10-28):
+21 questions.
 
-Family A (sleep, 8): A1 bedtime -> duration; A2 bedtime variability ->
+Family A (sleep, 9): A1 bedtime -> duration; A2 bedtime variability ->
 next-morning RHR; A3 duration -> next-day RHR; A4 duration -> next-day
 run quality; A5 sleep consistency -> next-day run quality; A6 bedtime ->
 efficiency (source-aware); A7 sleep-regularity (midpoint scatter) ->
 RHR / run quality; A8 social jetlag -> Sunday-night duration / Monday
-run quality.
+run quality; A9 awake time in bed -> next-morning RHR.
 Family B (training load, 7): B1 ramp (ACWR) -> next-week run quality;
 B2 monotony -> next-week RHR trend; B3 mileage volatility -> following
 -week run quality; B4 long-run share -> late-run fade; B5 training
@@ -43,6 +44,12 @@ Pair-construction decisions (documented, not in the registry draft):
 - B6's baseline is mean pace of runs at 10-15 C (needs >= 3); the
   penalty is percent slower than that baseline, regressed on temp.
 - B7's norm is the trailing-14-day median RHR (needs >= 7 prior days).
+- A9's awake: Garmin reports awakeSleepSeconds in the sleep window
+  (includes onset latency); Apple reports summed Awake segments
+  (detected mid-sleep wakefulness; onset latency not captured in
+  stages-era exports). InBed-minus-Asleep was tried for Apple and
+  rejected: old InBed blocks span whole days (6-12h artifacts on 2023
+  nights) and no InBed segments appear at all in 2026 windows.
 - C4's flat-equivalent prediction range comes from the personal app's
   prediction model, which is NOT part of this track: C4 emits the
   result + calibration cross-reference with prediction_range = null
@@ -266,6 +273,21 @@ def b_A8(athlete, outcome):
     return usable, collected, has, ""
 
 
+def b_A9(athlete):
+    sleep, daily = _nightly_base(athlete)
+    has_awake = any(n.awake_min is not None for n in athlete.sleep_nights)
+    usable, collected = [], []
+    for n in athlete.sleep_nights:
+        d = n.wake_date
+        rhr = daily.get(d).resting_hr_bpm if daily.get(d) else None
+        if n.awake_min is not None and rhr is not None:
+            collected.append((d, n.awake_min, rhr))
+            if not n.excluded_sensor_unreliable:
+                usable.append((d, n.awake_min, rhr))
+    return usable, collected, has_awake, \
+        "your export has no awake time in bed" if not has_awake else ""
+
+
 def _weeks(athlete):
     return build_weeks(athlete)
 
@@ -439,6 +461,9 @@ QUESTIONS = [
     ("A8-Quality", "sleep", "weekly", "Weekend schedule shift and Monday run quality",
      "higher weekend-shift weeks", "lower weekend-shift weeks", "Monday run pace",
      "pace", "weeks", "26 weeks", 60.0, ("pace_pct",)),
+    ("A9", "sleep", "nightly", "Awake time in bed and next-morning resting heart rate",
+     "more-awake nights", "less-awake nights", "next-morning resting HR",
+     "hr", "nights", "180 days", 30.0, ("abs", 1.0)),
     ("B1", "load", "weekly", "Training ramp and next week's run quality",
      "higher-ramp weeks", "lower-ramp weeks", "next-week run pace",
      "pace", "weeks", "26 weeks", 1.0, ("pace_pct",)),
@@ -468,6 +493,7 @@ BUILDERS = {
     "A7-Quality": lambda a: b_A7(a, "quality"),
     "A8-Duration": lambda a: b_A8(a, "duration"),
     "A8-Quality": lambda a: b_A8(a, "quality"),
+    "A9": b_A9,
     "B1": b_B1, "B2": b_B2, "B3": b_B3, "B5": b_B5, "B6": b_B6, "B7": b_B7,
 }
 
@@ -487,6 +513,7 @@ METHODS = {
     "A7-Quality": "Each night's sleep-midpoint scatter paired with the next day's run pace. Effect is per 30 minutes of midpoint scatter, over the last 180 days, with a week-block bootstrap 95% likely range.",
     "A8-Duration": "Each week's weekend schedule shift (mean weekend sleep midpoint minus mean weekday midpoint) paired with the following Sunday night's sleep length. Effect is per hour of weekend shift, over the last 26 weeks, with a week-block bootstrap 95% likely range.",
     "A8-Quality": "Each week's weekend schedule shift paired with the following Monday's run pace. Effect is per hour of weekend shift, over the last 26 weeks, with a week-block bootstrap 95% likely range.",
+    "A9": "Each night's awake time in bed (time in bed not asleep, where the source reports it) paired with the next morning's resting heart rate. Effect is per 30 minutes awake in bed, over the last 180 days, with a week-block bootstrap 95% likely range.",
     "B1": "Each week's ramp (that week's mileage divided by the mean of the prior 4 weeks' mileage) paired with the following week's mean run pace. Effect is per 1.0 of ramp, over the last 26 weeks, with a week-block bootstrap 95% likely range.",
     "B2": "Each week's monotony (mean daily mileage divided by its standard deviation) paired with the change in mean resting heart rate the following week. Effect is per 1.0 of monotony, over the last 26 weeks, with a week-block bootstrap 95% likely range.",
     "B3": "Each week's mileage swing (absolute change from the prior week, as a share) paired with the following week's mean run pace. Effect is per 10 percentage points of swing, over the last 26 weeks, with a week-block bootstrap 95% likely range.",
@@ -520,12 +547,16 @@ def _sentence(q, card):
     eff_s = _fmt(eff, unit)
     lo_s = _fmt(lo, unit)
     hi_s = _fmt(hi, unit)
+    # Driver phrases that already end in the unit word ("later-bedtime
+    # nights") must not get the unit appended again ("nights nights").
+    dh_p = dh if dh.endswith(unit_label) else f"{dh} {unit_label}"
+    dl_p = dl if dl.endswith(unit_label) else f"{dl} {unit_label}"
     if tier == "solid":
-        s = (f"On {dh} {unit_label}, {outcome} runs about {eff_s} {d} "
-             f"than on {dl} {unit_label} — likely range {lo_s} to {hi_s}. "
+        s = (f"On {dh_p}, {outcome} runs about {eff_s} {d} "
+             f"than on {dl_p} — likely range {lo_s} to {hi_s}. "
              f"Based on {n} {unit_label} in the last {window_label}.")
     else:  # emerging
-        s = (f"Early evidence: on {dh} {unit_label}, {outcome} tends to run "
+        s = (f"Early evidence: on {dh_p}, {outcome} tends to run "
              f"about {eff_s} {d} — likely range {lo_s} to {hi_s}. "
              f"Not yet solid: {card['binding_rule']}.")
         if card["binding_rule"] in ("evidence too spread out",

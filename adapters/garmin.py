@@ -139,7 +139,7 @@ class Adapter:
         self.rejections = {}  # reason -> count
         self.merged_duplicate_nights = 0
         self.wake_date_mismatches = 0
-        self.sleep = {}  # wake_date -> {"deep": s, "light": s, "rem": s, "bedtime": dt}
+        self.sleep = {}  # wake_date -> {"deep"/"light"/"rem"/"awake": s, "bedtime": dt}
         self.daily = {}  # date -> {"resting_hr_bpm": v}
         self.activities = []
 
@@ -201,12 +201,13 @@ class Adapter:
             if r.get("calendarDate") is not None and wake_date != r["calendarDate"]:
                 self.wake_date_mismatches += 1
             night = self.sleep.setdefault(wake_date, {
-                "deep": 0.0, "light": 0.0, "rem": 0.0, "bedtime": start_local,
-                "sessions": 0,
+                "deep": 0.0, "light": 0.0, "rem": 0.0, "awake": 0.0,
+                "bedtime": start_local, "sessions": 0,
             })
             night["deep"] += float(r.get("deepSleepSeconds") or 0)
             night["light"] += float(r.get("lightSleepSeconds") or 0)
             night["rem"] += float(r.get("remSleepSeconds") or 0)
+            night["awake"] += float(r.get("awakeSleepSeconds") or 0)
             if start_local < night["bedtime"]:
                 night["bedtime"] = start_local
             night["sessions"] += 1
@@ -255,6 +256,7 @@ class Adapter:
                 "duration_min": round(duration_min, 2),
                 "bedtime_min_past_21": bedtime_min_past_21(night["bedtime"]),
                 "sleep_efficiency_pct": None,
+                "awake_min": round(night["awake"] / 60.0, 2),
                 "excluded_sensor_unreliable": False,
                 "exclusion_reason": None,
             })
@@ -294,7 +296,7 @@ class Adapter:
                     "Activity units verified from the data: duration in milliseconds, distance in centimeters (distance/duration reproduces stored avgSpeed on 1151/1157 checkable records; the 6 exceptions are lap_swimming, where Garmin's avgSpeed uses a different basis; no run affected). duration_s = ms/1000, distance_m = cm/100.",
                     "Activity dates are local dates from startTimeLocal (local wall-clock packed into epoch ms; differs from startTimeGmt by exactly the UTC offset). No timezone conversion applied to activities.",
                     "Sleep: DI-Connect-Wellness sleepData JSONs; sleepStart/EndTimestampGMT are naive GMT, converted to America/New_York. Wake date is the converted local end date (equals calendarDate on all records in this export; calendarDate is a cross-check, not the source of truth). Bedtime is the converted local start, as minutes past 21:00 unwrapped across midnight.",
-                    "Sleep duration = (deep + light + REM seconds) / 60 (asleep only; awake seconds in bed not counted; timestamp span not used). sleep_efficiency_pct is always null: no efficiency field is reported, and no proxy is derived.",
+                    "Sleep duration = (deep + light + REM seconds) / 60 (asleep only; awake seconds in bed not counted; timestamp span not used). awake_min = awakeSleepSeconds / 60, summed across merged records (time in bed not asleep, for question A9). sleep_efficiency_pct is always null: no efficiency field is reported, and no proxy is derived.",
                     "Daily: DI-Connect-Aggregator UDSFile JSONs; resting_hr_bpm is restingHeartRate (finalized day value), not currentDayRestingHeartRate (intraday estimate; the two differ on 520/655 days by 1-3 bpm). hrv_ms is always null: no HRV field exists in UDS or bioMetrics_latest.",
                     "excluded_sensor_unreliable is false for all rows in v1; implausible rows are rejected instead. A null distance or null avg HR is not a rejection (activity emitted with that field null).",
                     "Deliberately skipped, never read: DI-Connect-Metrics (training history, race predictions, VO2max -- the model does not use Garmin's own predictions or scores), DI-Connect-User profile/social files, Hydration, Golf, customer/consent/events files, and the DI-Connect-Uploaded-Files FIT archives (JSON summaries carry every needed field).",

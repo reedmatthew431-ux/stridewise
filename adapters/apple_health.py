@@ -154,6 +154,8 @@ class Adapter:
         self.rejections = {}  # reason -> count
         # Sleep: wake_date -> {"segments": [(start_dt, end_dt)], "latest_wake": dt}
         self.sleep = {}
+        # Awake segments per wake date, for awake_min derivation.
+        self.awake = {}
         # Every wake date seen on any in-window sleep record, including
         # InBed/Awake-only dates. Dates here with no Asleep segment are
         # zero-duration nights and are rejected at build time.
@@ -237,9 +239,21 @@ class Adapter:
             return
         self.sleep_wake_dates.add(wake_date)
         if value not in ASLEEP_VALUES:
-            # InBed / Awake / unknown: examined (rows_in) but never
-            # counted toward duration. A wake date with only such
-            # records is a zero-duration night, rejected at build time.
+            # Awake segments are kept to derive awake_min (summed
+            # detected wakefulness per wake date). InBed / unknown
+            # values are examined (rows_in) but not stored: InBed
+            # blocks on old data can span whole days (6-12h artifacts
+            # on 2023 nights) and no InBed segments appear at all in
+            # 2026 windows, so InBed-minus-Asleep is not a usable
+            # awake measure. A wake date with only non-Asleep records
+            # is a zero-duration night, rejected at build time.
+            if value == "HKCategoryValueSleepAnalysisAwake":
+                start_dt = parse_dt(attrs.get("startDate"))
+                end_dt = parse_dt(attrs.get("endDate"))
+                if start_dt is None or end_dt is None:
+                    self.reject("missing_date")
+                    return
+                self.awake.setdefault(wake_date, []).append((start_dt, end_dt))
             return
         start_dt = parse_dt(attrs.get("startDate"))
         end_dt = parse_dt(attrs.get("endDate"))
@@ -337,11 +351,22 @@ class Adapter:
                 self.reject("sleep_duration_out_of_range")
                 continue
             bedtime = min(s for s, _ in segments)
+            # awake_min: summed Awake segments for this wake date
+            # (0.0 when the night has Asleep segments but no detected
+            # awakenings). This is detected mid-sleep wakefulness;
+            # sleep-onset latency is not captured in stages-era
+            # exports, unlike Garmin's awake seconds in the sleep
+            # window -- the per-source definitions differ, and the
+            # import notes say so.
+            awake_segs = self.awake.get(wake_date, [])
+            awake_min = round(sum((e - s).total_seconds()
+                                  for s, e in awake_segs) / 60.0, 2)
             sleep_nights.append({
                 "wake_date": wake_date,
                 "duration_min": round(duration_min, 2),
                 "bedtime_min_past_21": bedtime_min_past_21(bedtime),
                 "sleep_efficiency_pct": None,
+                "awake_min": awake_min,
                 "excluded_sensor_unreliable": False,
                 "exclusion_reason": None,
             })
@@ -388,6 +413,7 @@ class Adapter:
                 "notes": [
                     "Dates are local athlete dates as recorded in export.xml; no timezone conversion applied.",
                     "Sleep duration sums Asleep* segments only; InBed/Awake never counted. Bedtime is the earliest Asleep segment start, as minutes past 21:00 unwrapped across midnight.",
+                    "awake_min sums Awake segments per wake date (0.0 when none detected) for question A9. This is detected mid-sleep wakefulness; sleep-onset latency is not captured in stages-era exports, unlike Garmin's awake seconds in the sleep window. InBed segments are never used for awake: old InBed blocks can span whole days (6-12h artifacts on 2023 nights) and no InBed segments appear in 2026 windows.",
                     "sleep_efficiency_pct is always null: Apple Health does not report it.",
                     "excluded_sensor_unreliable is false for all rows in v1; implausible rows are rejected instead.",
                     "rows_in counts relevant source records only (sleep, resting HR, HRV, workouts); other HealthKit types skipped without counting. Records nested in Correlation elements skipped (they duplicate top-level records).",
