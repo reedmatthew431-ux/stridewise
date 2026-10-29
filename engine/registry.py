@@ -800,6 +800,9 @@ def race_cards(athlete):
                 f"{r.field_size} finishers matched to a season best, the field "
                 f"ran a median of {r.field_median_slow_pct}% slower than those "
                 f"marks." if c1_ok else
+                "How fast was this course? The field hasn't been matched "
+                "to season bests yet, so no adjustment is shown."
+                if r.matched_finishers is None or r.field_size is None else
                 f"How fast was this course? Only {r.matched_finishers} "
                 f"finishers could be matched to a season best "
                 f"({(r.matched_finishers / r.field_size * 100) if r.field_size else 0:.0f}% "
@@ -832,6 +835,8 @@ def race_cards(athlete):
                 "Heart-rate data for this race looks consistent with your "
                 "run history."),
         }
+        t_str = (f"{int(r.finish_time_s // 60)}:{r.finish_time_s % 60:04.1f}"
+                 if r.finish_time_s is not None else "not recorded")
         c4 = {
             "question": "C4", "race": r.name, "date": str(r.date),
             "finish_time_s": r.finish_time_s,
@@ -839,7 +844,7 @@ def race_cards(athlete):
             "prediction_range": None,
             "prediction_reason": "prediction model not included in this track",
             "sentence": (
-                f"Your time: {r.finish_time_s}s. No flat-equivalent likely "
+                f"Your time: {t_str}. No flat-equivalent likely "
                 f"range is shown: the prediction model is not part of this "
                 f"build, and no range is fabricated in its place."),
         }
