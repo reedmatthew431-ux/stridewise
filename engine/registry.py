@@ -777,6 +777,15 @@ def run_all(athlete, prev_pack=None):
 
 # ------------------------------------------------------------- race family
 
+def _ordinal(n):
+    """1 -> '1st', 2 -> '2nd', 13 -> '13th', 23 -> '23rd'."""
+    if 10 <= n % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
 def race_cards(athlete):
     """C-family per-race cards. No races -> no cards (not insufficient)."""
     cards = []
@@ -803,6 +812,31 @@ def race_cards(athlete):
         shown_txt = (f"The field ran a median of {_dir} than their "
                      f"{_ref} ({r.matched_finishers} of {r.field_size} "
                      f"matched).")
+        # Own performance vs his own season best at this distance,
+        # from his own race list alone (no fetching). Appended to
+        # whichever C1 sentence the calibration state produced.
+        own_txt = ""
+        if r.finish_time_s is not None and r.distance_m is not None:
+            others = [rr for rr in athlete.races
+                      if rr is not r
+                      and rr.finish_time_s is not None
+                      and rr.distance_m is not None
+                      and rr.distance_m == r.distance_m
+                      and rr.date.year == r.date.year]
+            if others:
+                ref = min(others, key=lambda rr: rr.finish_time_s)
+                best = ref.finish_time_s
+                own_pct = round((r.finish_time_s - best) / best * 100.0, 1)
+                if own_pct < 0:
+                    own_txt = (f" You ran {abs(own_pct)}% faster than "
+                               f"your previous best — a new season "
+                               f"best.")
+                elif own_pct > 0:
+                    b_str = f"{int(best // 60)}:{best % 60:04.1f}"
+                    own_txt = (f" You ran {own_pct}% slower than your "
+                               f"season best ({b_str} on "
+                               f"{ref.date.strftime('%b')} "
+                               f"{ref.date.day}).")
         c1 = {
             "question": "C1", "race": r.name, "date": str(r.date),
             "shown": bool(c1_ok),
@@ -811,13 +845,13 @@ def race_cards(athlete):
             "matched_finishers": r.matched_finishers,
             "field_size": r.field_size,
             "sentence": (
-                shown_txt if c1_ok else
-                "Course not measured yet — the field hasn't been matched "
-                "to season bests."
-                if r.matched_finishers is None or r.field_size is None else
-                f"Only {r.matched_finishers} of {r.field_size} finishers "
-                f"matched to a season best — too few to measure this "
-                f"course."),
+                (shown_txt if c1_ok else
+                 "Course not measured yet — the field hasn't been matched "
+                 "to season bests."
+                 if r.matched_finishers is None or r.field_size is None else
+                 f"Only {r.matched_finishers} of {r.field_size} finishers "
+                 f"matched to a season best — too few to measure this "
+                 f"course.") + own_txt),
         }
         c2 = {
             "question": "C2", "race": r.name, "date": str(r.date),
@@ -848,16 +882,30 @@ def race_cards(athlete):
         }
         t_str = (f"{int(r.finish_time_s // 60)}:{r.finish_time_s % 60:04.1f}"
                  if r.finish_time_s is not None else "not recorded")
+        if r.place is not None and r.field_size:
+            _top = round(r.place / r.field_size * 100)
+            c4_sentence = (
+                f"Your time: {t_str} — {r.place} of {r.field_size} "
+                f"(top {_top}%). No predicted range — this build "
+                f"doesn't estimate race times.")
+        else:
+            c4_sentence = (
+                f"Your time: {t_str}. No predicted range — this build "
+                f"doesn't estimate race times.")
         c4 = {
             "question": "C4", "race": r.name, "date": str(r.date),
             "finish_time_s": r.finish_time_s,
             "field_median_slow_pct": r.field_median_slow_pct if c1_ok else None,
             "prediction_range": None,
             "prediction_reason": "prediction model not included in this track",
-            "sentence": (
-                f"Your time: {t_str}. No predicted range — this build "
-                f"doesn't estimate race times."),
+            "sentence": c4_sentence,
         }
+        if (r.team_name and r.team_place is not None and r.team_field
+                and r.team_position is not None):
+            c4["team_sentence"] = (
+                f"Team: {r.team_name} {_ordinal(r.team_place)} of "
+                f"{r.team_field} — {_ordinal(r.team_position)} "
+                f"{r.team_name} finisher.")
         # C5: pre-race sleep, T-1 = row dated race day, T-2 = race day - 1,
         # baseline = race-30..race-3 excluding featured (race T-1/T-2) nights.
         featured = set()
@@ -907,6 +955,25 @@ def race_cards(athlete):
                 "Pre-race sleep vs the prior 28-night baseline, for "
                 "context only — it doesn't grade the sleep or claim it "
                 "changed the result.")
+        # Morning-after resting HR vs the same style of baseline
+        # window (race-30..race-3 daily RHR). Descriptive data only;
+        # C5's sentence is unchanged by it.
+        post_day = athlete.daily_by_date.get(r.date + timedelta(days=1))
+        if post_day is not None and post_day.resting_hr_bpm is not None:
+            base_rhr = [d.resting_hr_bpm for d in athlete.daily
+                        if d.resting_hr_bpm is not None
+                        and r.date - timedelta(days=30) <= d.date
+                        <= r.date - timedelta(days=3)]
+            bn = len(base_rhr)
+            bmean = statistics.mean(base_rhr) if bn else None
+            c5["post_race"] = {
+                "date": str(post_day.date),
+                "rhr": post_day.resting_hr_bpm,
+                "baseline_rhr": round(bmean, 1) if bn >= 14 else None,
+                "baseline_n": bn,
+                "delta": (round(post_day.resting_hr_bpm - bmean, 1)
+                          if bn >= 14 else None),
+            }
         cards.extend([c1, c2, c3, c4, c5])
     return cards
 

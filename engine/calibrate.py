@@ -40,6 +40,17 @@ block page STOPS the run immediately: nothing is written back and
 the partial state is reported as partial. Individual non-429
 failures count as unmatched and the run continues.
 
+The same run also captures the profile athlete's own result
+context from the meet page: his row in the individual table is
+identified by an exact TIME match against the entry's
+`finish_time_s` (tolerance 0.05s) — exactly one match yields
+`place` and `team_name`; zero or multiple matches store nothing
+(never a guess). His team's standing comes from the matching
+team-results table (`team_place` / `team_field`, counting placed
+teams only — unplaced/DNF team rows are not part of the field,
+mirroring the individual DNF rule), and `team_position` is his
+rank among his own team's finishers.
+
 Writes only the one race entry's calibration fields in the given
 normalized.json (a workspace data file, never committed). Prints a
 JSON summary to stdout; progress goes to stderr.
@@ -181,6 +192,126 @@ def parse_results_table(meet_html: str, table_hint: str) -> list[dict]:
             "race_time_s": race_time,
         })
     return finishers
+
+
+def parse_results_table_full(meet_html: str,
+                               table_hint: str) -> tuple[list[dict], str]:
+    """Like parse_results_table, plus PL / TEAM per finisher.
+
+    Returns (finishers, heading_text) where finishers carry the
+    extra keys "place" (int or None) and "team" (str or None), and
+    heading_text is the whitespace-normalized individual-results
+    heading (used to locate the matching team-results table).
+    """
+    heading_at = None
+    heading_text = ""
+    for m in re.finditer(r"<h3[^>]*>(.*?)</h3>", meet_html, re.S):
+        text = _strip(m.group(1))
+        if table_hint in text and "Individual" in text:
+            heading_at = m.end()
+            heading_text = " ".join(text.split())
+            break
+    if heading_at is None:
+        raise ValueError(f"no individual-results heading contains "
+                         f"{table_hint!r}")
+    tbl_start = meet_html.find("<table", heading_at)
+    tbl_end = meet_html.find("</table>", tbl_start)
+    if tbl_start < 0 or tbl_end < 0:
+        raise ValueError("results table not found after heading")
+    tbl = meet_html[tbl_start:tbl_end]
+    rows = re.findall(r"<tr[^>]*>(.*?)</tr>", tbl, re.S)
+    if not rows:
+        raise ValueError("results table has no rows")
+    headers = [_strip(c).upper()
+               for c in re.findall(r"<th[^>]*>(.*?)</th>", rows[0], re.S)]
+    if "TIME" not in headers or "NAME" not in headers:
+        raise ValueError(f"unexpected results-table headers: {headers}")
+    time_idx, name_idx = headers.index("TIME"), headers.index("NAME")
+    pl_idx = headers.index("PL") if "PL" in headers else None
+    team_idx = headers.index("TEAM") if "TEAM" in headers else None
+    finishers = []
+    for row in rows[1:]:
+        cells = re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)
+        if len(cells) <= max(time_idx, name_idx):
+            continue
+        race_time = parse_time(_strip(cells[time_idx]))
+        if race_time is None:
+            continue  # DNF / DNS / no-time row: not a finisher
+        name_cell = cells[name_idx]
+        link = re.search(r'href="([^"]*/athletes/[^"]*)"', name_cell)
+        place = None
+        if pl_idx is not None and len(cells) > pl_idx:
+            pl_txt = _strip(cells[pl_idx])
+            if re.fullmatch(r"\d+", pl_txt):
+                place = int(pl_txt)
+        team = None
+        if team_idx is not None and len(cells) > team_idx:
+            team = _strip(cells[team_idx]) or None
+        finishers.append({
+            "name": _strip(name_cell),
+            "profile_url": link.group(1) if link else None,
+            "race_time_s": race_time,
+            "place": place,
+            "team": team,
+        })
+    return finishers, heading_text
+
+
+def team_standing(meet_html: str, indiv_heading_text: str,
+                  team_name: str) -> dict:
+    """His team's standing in the matching team-results table.
+
+    The team table is the one whose heading starts with the
+    individual heading's text up to "Individual" (e.g. "Men 8k
+    Champ") and names Team (not Individual) results. Only rows
+    with a parseable PL count — unplaced/DNF team rows are not
+    part of the field, mirroring the individual DNF rule.
+    Returns {"status", "team_place", "team_field"} with status
+    "ok" | "no_team_table" | "team_not_listed".
+    """
+    out = {"status": "no_team_table", "team_place": None,
+           "team_field": None}
+    probe = indiv_heading_text.split("Individual")[0].strip()
+    if not probe:
+        return out
+    for m in re.finditer(r"<h3[^>]*>(.*?)</h3>", meet_html, re.S):
+        text = " ".join(_strip(m.group(1)).split())
+        if (not text.startswith(probe) or "Team" not in text
+                or "Individual" in text):
+            continue
+        tbl_start = meet_html.find("<table", m.end())
+        tbl_end = meet_html.find("</table>", tbl_start)
+        if tbl_start < 0 or tbl_end < 0:
+            return out
+        tbl = meet_html[tbl_start:tbl_end]
+        rows = re.findall(r"<tr[^>]*>(.*?)</tr>", tbl, re.S)
+        if not rows:
+            return out
+        headers = [_strip(c).upper()
+                   for c in re.findall(r"<th[^>]*>(.*?)</th>",
+                                       rows[0], re.S)]
+        if "TEAM" not in headers:
+            return out
+        team_idx = headers.index("TEAM")
+        pl_idx = headers.index("PL") if "PL" in headers else 0
+        standings = []
+        for row in rows[1:]:
+            cells = re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)
+            if len(cells) <= max(team_idx, pl_idx):
+                continue
+            pl_txt = _strip(cells[pl_idx])
+            if not re.fullmatch(r"\d+", pl_txt):
+                continue  # unplaced (DNF) team row: not in the field
+            standings.append((int(pl_txt), _strip(cells[team_idx])))
+        out["team_field"] = len(standings)
+        for pl, tn in standings:
+            if tn == team_name:
+                out["status"] = "ok"
+                out["team_place"] = pl
+                return out
+        out["status"] = "team_not_listed"
+        return out
+    return out
 
 
 _MONTHS = {m: i + 1 for i, m in enumerate(
@@ -345,6 +476,42 @@ def calibrate(normalized_path: str, race_date_s: str) -> int:
           f"{sum(1 for f in finishers if f['profile_url'])} with profiles",
           file=sys.stderr)
 
+    # Place / team capture: his row is the one whose TIME equals
+    # the entry's official finish_time_s (tolerance 0.05s). Exactly
+    # one match identifies him; zero or multiple matches store
+    # nothing — never a guess.
+    detailed, heading_text = parse_results_table_full(meet_html,
+                                                      table_hint)
+    capture = {"status": "no_finish_time", "matches": 0}
+    if race.get("finish_time_s") is not None:
+        target = float(race["finish_time_s"])
+        hits = [f for f in detailed
+                if abs(f["race_time_s"] - target) <= 0.05]
+        capture["matches"] = len(hits)
+        if len(hits) == 1:
+            his = hits[0]
+            capture.update(status="ok", place=his["place"],
+                           team_name=his["team"])
+            if his["place"] is not None and his["team"]:
+                capture["team_position"] = 1 + sum(
+                    1 for f in detailed
+                    if f["team"] == his["team"]
+                    and f["place"] is not None
+                    and f["place"] < his["place"])
+                st = team_standing(meet_html, heading_text, his["team"])
+                capture["team_table"] = st["status"]
+                capture["team_place"] = st["team_place"]
+                capture["team_field"] = st["team_field"]
+        elif not hits:
+            capture["status"] = "no_match"
+        else:
+            capture["status"] = "ambiguous"
+            capture["candidates"] = [
+                {"place": f["place"], "name": f["name"],
+                 "team": f["team"]} for f in hits]
+        print(f"place capture: {capture['status']} "
+              f"({capture['matches']} TIME match/es)", file=sys.stderr)
+
     def fresh_progress() -> dict:
         return {"pcts": [], "per_finisher": {}, "attempted": 0}
 
@@ -416,6 +583,16 @@ def calibrate(normalized_path: str, race_date_s: str) -> int:
     if bar_met:
         race["field_median_slow_pct"] = median
     race["reference_season"] = reference_season
+    if capture["status"] == "ok":
+        race["place"] = capture["place"]
+        race["team_name"] = capture["team_name"]
+        race["team_place"] = capture.get("team_place")
+        race["team_field"] = capture.get("team_field")
+        race["team_position"] = capture.get("team_position")
+    else:
+        for key in ("place", "team_name", "team_place", "team_field",
+                    "team_position"):
+            race.pop(key, None)
     with open(normalized_path, "w") as fh:
         json.dump(data, fh, indent=1)
 
@@ -443,6 +620,7 @@ def calibrate(normalized_path: str, race_date_s: str) -> int:
         "fetch_failures": stats["failures"],
         "profiles_fetched_live": stats["fetched_live"],
         "profiles_from_cache": stats["from_cache"],
+        "place_capture": capture,
         "spot": spot,
     }, indent=2))
     return 0

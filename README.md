@@ -80,7 +80,13 @@ fallback pass matches against pure last-season bests at the same
 labels (the pools are never mixed) under the same bar; the race
 entry's `reference_season` records which pool produced the shown
 result, and the card's sentence says "last season's bests" when
-the fallback produced it.
+the fallback produced it. The same run also captures the profile
+athlete's own result context from the meet page — his `place` and
+`team_name` (identified by an exact TIME match against the
+entry's finish time; zero or multiple matches store nothing),
+his team's standing in the matching team-results table
+(`team_place` / `team_field`, placed teams only), and his
+`team_position` among his own team's finishers.
 
 Fetch discipline: stdlib urllib, descriptive User-Agent,
 sequential requests with a short delay, and every page cached

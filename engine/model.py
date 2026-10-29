@@ -71,6 +71,11 @@ class Race:
     field_median_slow_pct: float | None = None
     reference_season: int | None = None
     conditions_note: str | None = None
+    place: int | None = None
+    team_name: str | None = None
+    team_place: int | None = None
+    team_field: int | None = None
+    team_position: int | None = None
 
 
 @dataclass
@@ -188,6 +193,11 @@ def load_normalized(path: str) -> Athlete:
                                    else float(r["field_median_slow_pct"])),
             reference_season=r.get("reference_season"),
             conditions_note=r.get("conditions_note"),
+            place=r.get("place"),
+            team_name=r.get("team_name"),
+            team_place=r.get("team_place"),
+            team_field=r.get("team_field"),
+            team_position=r.get("team_position"),
         ))
     return ath
 
