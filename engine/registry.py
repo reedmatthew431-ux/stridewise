@@ -809,9 +809,8 @@ def race_cards(athlete):
         _dir = (f"{_pct}% slower" if _pct is not None and _pct >= 0
                 else f"{abs(_pct)}% faster" if _pct is not None else "")
         _ref = "last season's bests" if is_fallback else "season bests"
-        shown_txt = (f"The field ran a median of {_dir} than their "
-                     f"{_ref} ({r.matched_finishers} of {r.field_size} "
-                     f"matched).")
+        shown_txt = (f"Field median: {_dir} than {_ref} "
+                     f"({r.matched_finishers} of {r.field_size} matched).")
         # Distribution clauses (shown calibrations only): how much
         # of the field the course slowed, and how wide the middle
         # half ran. Older entries without distribution fields skip
@@ -822,24 +821,18 @@ def race_cards(athlete):
                 and r.field_pct_p25 is not None
                 and r.field_pct_p75 is not None):
             if r.field_slow_share_pct >= r.field_fast_share_pct:
-                dist_txt += (
-                    f" {round(r.field_slow_share_pct)}% of matched "
-                    f"finishers ran slower than their best.")
+                dist_txt += f" {round(r.field_slow_share_pct)}% ran slower;"
             else:
-                dist_txt += (
-                    f" {round(r.field_fast_share_pct)}% of matched "
-                    f"finishers ran faster than their best.")
-
-            def _fmt_bound(v):
-                if v > 0:
-                    return f"{abs(v):.1f}% slower"
-                if v < 0:
-                    return f"{abs(v):.1f}% faster"
-                return "their best time exactly"
-            dist_txt += (
-                f" The middle half ran between "
-                f"{_fmt_bound(r.field_pct_p25)} and "
-                f"{_fmt_bound(r.field_pct_p75)}.")
+                dist_txt += f" {round(r.field_fast_share_pct)}% ran faster;"
+            _p25, _p75 = r.field_pct_p25, r.field_pct_p75
+            if _p25 >= 0:
+                _span = f"{_p25:.1f}–{_p75:.1f}% slower"
+            elif _p75 <= 0:
+                _span = f"{abs(_p75):.1f}–{abs(_p25):.1f}% faster"
+            else:
+                _span = (f"{abs(_p25):.1f}% faster to "
+                         f"{_p75:.1f}% slower")
+            dist_txt += f" middle half {_span}."
         # Own performance vs his own season best at this distance,
         # from his own race list alone (no fetching). Appended to
         # whichever C1 sentence the calibration state produced.
@@ -856,14 +849,12 @@ def race_cards(athlete):
                 best = ref.finish_time_s
                 own_pct = round((r.finish_time_s - best) / best * 100.0, 1)
                 if own_pct < 0:
-                    own_txt = (f" You ran {abs(own_pct)}% faster than "
-                               f"your previous best — a new season "
-                               f"best.")
+                    own_txt = (f" You: {abs(own_pct)}% faster than your "
+                               f"previous best — a new season best.")
                 elif own_pct > 0:
                     b_str = f"{int(best // 60)}:{best % 60:04.1f}"
-                    own_txt = (f" You ran {own_pct}% slower than your "
-                               f"season best ({b_str} on "
-                               f"{ref.date.strftime('%b')} "
+                    own_txt = (f" You: {own_pct}% slower than your best "
+                               f"({b_str}, {ref.date.strftime('%b')} "
                                f"{ref.date.day}).")
         c1 = {
             "question": "C1", "race": r.name, "date": str(r.date),
@@ -878,20 +869,23 @@ def race_cards(athlete):
             "field_size": r.field_size,
             "sentence": (
                 (shown_txt + dist_txt if c1_ok else
-                 "Course not measured yet — the field hasn't been matched "
-                 "to season bests."
+                 "Not measured yet — the field hasn't been matched to "
+                 "season bests."
                  if r.matched_finishers is None or r.field_size is None else
-                 f"Only {r.matched_finishers} of {r.field_size} finishers "
-                 f"matched to a season best — too few to measure this "
-                 f"course.") + own_txt),
+                 f"Only {r.matched_finishers} of {r.field_size} matched "
+                 f"— too few to measure this course.") + own_txt),
         }
+        if r.conditions_note:
+            # No second period when the note already ends with one.
+            _tail = ("" if r.conditions_note.rstrip().endswith(
+                (".", "!", "?")) else ".")
+            c2_sentence = f"Your note: '{r.conditions_note}'{_tail}"
+        else:
+            c2_sentence = "None recorded."
         c2 = {
             "question": "C2", "race": r.name, "date": str(r.date),
             "conditions_note": r.conditions_note,
-            "sentence": (f"Conditions (athlete's own words): "
-                         f"'{r.conditions_note}'."
-                         if r.conditions_note else
-                         "Conditions: none recorded."),
+            "sentence": c2_sentence,
         }
         # C3: flag when race HR is implausibly low vs run history.
         race_act = [a for a in athlete.activities
@@ -905,25 +899,27 @@ def race_cards(athlete):
             "race_avg_hr": race_hr,
             "typical_avg_hr": round(hr_mean, 1) if hr_mean else None,
             "sentence": (
-                f"Heart rate looks unreliable for this race: {race_hr} "
-                f"bpm average is unusually low (typical "
-                f"{round(hr_mean, 1)}), so it isn't used as effort "
-                f"evidence." if flagged else
-                "Heart rate looks consistent with this profile's other "
-                "runs."),
+                f"Unreliable for this race: {race_hr} bpm average, "
+                f"unusually low (typical {round(hr_mean, 1)}) — not "
+                f"used as effort evidence." if flagged else
+                "Consistent with this profile's other runs."),
         }
         t_str = (f"{int(r.finish_time_s // 60)}:{r.finish_time_s % 60:04.1f}"
                  if r.finish_time_s is not None else "not recorded")
         if r.place is not None and r.field_size:
             _top = round(r.place / r.field_size * 100)
             c4_sentence = (
-                f"Your time: {t_str} — {r.place} of {r.field_size} "
-                f"(top {_top}%). No predicted range — this build "
+                f"{t_str} — {r.place} of {r.field_size} "
+                f"(top {_top}%). No predicted range; this build "
                 f"doesn't estimate race times.")
+        elif r.finish_time_s is not None:
+            c4_sentence = (
+                f"{t_str}. No predicted range; this build doesn't "
+                f"estimate race times.")
         else:
             c4_sentence = (
-                f"Your time: {t_str}. No predicted range — this build "
-                f"doesn't estimate race times.")
+                "No time recorded. No predicted range; this build "
+                "doesn't estimate race times.")
         c4 = {
             "question": "C4", "race": r.name, "date": str(r.date),
             "finish_time_s": r.finish_time_s,
@@ -935,7 +931,7 @@ def race_cards(athlete):
         if (r.team_name and r.team_place is not None and r.team_field
                 and r.team_position is not None):
             c4["team_sentence"] = (
-                f"Team: {r.team_name} {_ordinal(r.team_place)} of "
+                f"{r.team_name} {_ordinal(r.team_place)} of "
                 f"{r.team_field} — {_ordinal(r.team_position)} "
                 f"{r.team_name} finisher.")
         # C5: pre-race sleep, T-1 = row dated race day, T-2 = race day - 1,
@@ -980,13 +976,12 @@ def race_cards(athlete):
         }
         if len(base_dur) < 14 or len(base_bt) < 14:
             c5["sentence"] = (
-                "Pre-race sleep without a baseline — not enough earlier "
-                "sleep data to compare against.")
+                "No baseline — not enough earlier sleep data to "
+                "compare against.")
         else:
             c5["sentence"] = (
-                "Pre-race sleep vs the prior 28-night baseline, for "
-                "context only — it doesn't grade the sleep or claim it "
-                "changed the result.")
+                "Context only: not a grade, and not a claim it changed "
+                "the result.")
         # Morning-after resting HR vs the same style of baseline
         # window (race-30..race-3 daily RHR). Descriptive data only;
         # C5's sentence is unchanged by it.
