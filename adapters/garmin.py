@@ -66,7 +66,9 @@ Rules implemented (see task spec):
     empty); the userBioMetrics file holds versioned profile settings,
     not daily values.
   * Rejected and counted: sleep nights with duration <= 0 or > 1440
-    min; activities missing startTimeLocal or with duration <= 0
+    min; sleep nights of 0-60 min are tracking fragments, rejected
+    as sleep_fragment_under_60_min (fragment guard, approved
+    2026-10-30); activities missing startTimeLocal or with duration <= 0
     or distance < 0; daily rows with resting HR outside 25-220 bpm.
     A null distance or null avg HR is NOT a rejection: the activity
     is emitted with that field null (pace/mileage simply skip it).
@@ -251,6 +253,14 @@ class Adapter:
             if duration_min <= 0 or duration_min > 1440:
                 self.reject("sleep_duration_out_of_range")
                 continue
+            if duration_min < 60:
+                # Fragment guard (Matt, approved 2026-10-30): a merged
+                # night under 60 minutes asleep is a tracking fragment,
+                # not a night of sleep. Judged AFTER duplicate-night
+                # merging, so a fragment merged into a real night is
+                # not rejected.
+                self.reject("sleep_fragment_under_60_min")
+                continue
             sleep_nights.append({
                 "wake_date": wake_date,
                 "duration_min": round(duration_min, 2),
@@ -299,6 +309,7 @@ class Adapter:
                     "Sleep duration = (deep + light + REM seconds) / 60 (asleep only; awake seconds in bed not counted; timestamp span not used). awake_min = awakeSleepSeconds / 60, summed across merged records (time in bed not asleep, for question A9). sleep_efficiency_pct is always null: no efficiency field is reported, and no proxy is derived.",
                     "Daily: DI-Connect-Aggregator UDSFile JSONs; resting_hr_bpm is restingHeartRate (finalized day value), not currentDayRestingHeartRate (intraday estimate; the two differ on 520/655 days by 1-3 bpm). hrv_ms is always null: no HRV field exists in UDS or bioMetrics_latest.",
                     "excluded_sensor_unreliable is false for all rows in v1; implausible rows are rejected instead. A null distance or null avg HR is not a rejection (activity emitted with that field null).",
+                    "Fragment guard (approved 2026-10-30): merged nights under 60 minutes asleep are tracking fragments, rejected and counted as sleep_fragment_under_60_min. The guard runs after duplicate-night merging, so a fragment merged into a real night is kept.",
                     "Deliberately skipped, never read: DI-Connect-Metrics (training history, race predictions, VO2max -- the model does not use Garmin's own predictions or scores), DI-Connect-User profile/social files, Hydration, Golf, customer/consent/events files, and the DI-Connect-Uploaded-Files FIT archives (JSON summaries carry every needed field).",
                     "GPS: none in this output. Only whitelisted scalar fields are read; latitude/longitude, location names, tracks, routes, courses, and FIT position data are never read or stored.",
                     "temp_c is always null; races is always [].",

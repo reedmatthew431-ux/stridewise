@@ -30,8 +30,11 @@ Rules implemented (see task spec):
   * sleep_efficiency_pct: always null (Apple Health does not report it).
   * excluded_sensor_unreliable: false for all rows in v1.
   * Implausible rows are REJECTED and counted: sleep duration <= 0
-    or > 1440 min (per merged night); resting HR outside 25-220 bpm
-    (per sample; the day's median uses the remaining samples).
+    or > 1440 min (per merged night); a merged night of 0-60 min is a
+    tracking fragment, rejected as sleep_fragment_under_60_min
+    (fragment guard, approved 2026-10-30); resting HR outside
+    25-220 bpm (per sample; the day's median uses the remaining
+    samples).
   * Daily resting HR / HRV: median of that local date's samples
     (RestingHeartRate in count/min, HeartRateVariabilitySDNN in ms).
     Dates with no samples are absent, never zero-filled.
@@ -350,6 +353,14 @@ class Adapter:
             if duration_min <= 0 or duration_min > 1440:
                 self.reject("sleep_duration_out_of_range")
                 continue
+            if duration_min < 60:
+                # Fragment guard (Matt, approved 2026-10-30): a merged
+                # night under 60 minutes asleep is a tracking fragment
+                # (e.g. a watch worn for part of a night), not a night
+                # of sleep. Judged AFTER duplicate-night merging, so a
+                # fragment merged into a real night is not rejected.
+                self.reject("sleep_fragment_under_60_min")
+                continue
             bedtime = min(s for s, _ in segments)
             # awake_min: summed Awake segments for this wake date
             # (0.0 when the night has Asleep segments but no detected
@@ -419,6 +430,7 @@ class Adapter:
                     "rows_in counts relevant source records only (sleep, resting HR, HRV, workouts); other HealthKit types skipped without counting. Records nested in Correlation elements skipped (they duplicate top-level records).",
                     "window_excluded counts relevant source records dropped by the window cutoff (sleep judged by wake date, others by start date).",
                     "merged_duplicate_nights counts wake dates whose Asleep segments split into 2+ sessions (new session = segment starting >60 min after previous segment ended).",
+                    "Fragment guard (approved 2026-10-30): merged nights under 60 minutes asleep are tracking fragments, rejected and counted as sleep_fragment_under_60_min. The guard runs after duplicate-night merging, so a fragment merged into a real night is kept.",
                     "Location data: none in this output; no external location file was opened.",
                     "Distance: totalDistance attribute when present, else WorkoutStatistics distance sums (scalar totals only, never route data).",
                     "temp_c is always null; is_race is always false; races is always [].",
