@@ -266,7 +266,12 @@ use. Write the Analyst Report as a JSON object with exactly three keys:
 
 - "headline_findings": claims about the patterns that cleared the bar
   (cards with tier "solid" or "emerging", and race cards). Lead with
-  what matters most.
+  what matters most. In the claim text itself, never name a tier:
+  no "solid", "emerging", "no pattern", "not enough data", or
+  "insufficient", and no hyphenated or underscored variant of any
+  of them. State the effect, its likely range, and the count
+  instead: "about 41 minutes shorter, likely range 49 min to
+  34 min, across 148 nights".
 - "ruled_out": what was checked and did not hold up (cards with tier
   "no_pattern" or "insufficient_data"). State plainly that the data did
   not show a pattern. This section is a feature, not a failure. In
@@ -275,6 +280,12 @@ use. Write the Analyst Report as a JSON object with exactly three keys:
   and "results in" are banned here too. State the observation and
   the gate outcome instead: "X showed no pattern over N nights —
   the likely range includes zero."
+  Never name a tier in this section's claim text either:
+  no "solid", "emerging", "no pattern", "not enough data", or
+  "insufficient", and no hyphenated or underscored variant of
+  any of them. State the gate outcome instead:
+  "the likely range includes zero across N nights", or
+  "only N paired nights — under the 20 needed to test."
 - "evidence_needs": for questions the data cannot yet settle, state
   what the EVIDENCE needs (more nights, a missing field, a wider range
   of weeks). Never phrase this as a prediction about the athlete and
@@ -306,8 +317,21 @@ Hard rules for every claim:
   where X is the question and N is its paired count.
 - No medical language and no advice. Never tell the athlete what to do.
 - No predictions about the athlete's future results or feelings.
-- If you name a tier, it must be the tier of a cited fact. A demoted
-  fact must be described as demoted or dropped.
+- NEVER write tier labels in claim text. The words "solid",
+  "emerging", "no pattern", "not enough data", and "insufficient"
+  — and their hyphenated or underscored variants ("no-pattern",
+  "no_pattern", "insufficient_data", "not-enough-data") — must
+  not appear in any claim, in any section. The app renders each
+  card's tier itself; your prose describes the finding only. For
+  a strong finding, state the effect, the likely range, and the
+  count: "about 41 minutes shorter, likely range 49 min to
+  34 min, across 148 nights". For a ruled-out item, state the
+  gate outcome without tier words:
+  "the likely range includes zero across N nights", or
+  "only N paired nights — under the 20 needed to test".
+  If a cited fact was demoted, say it
+  dropped or no longer holds — those words are fine — but
+  still name no tier.
 - Keep each claim to one or two sentences, in plain language.
 
 Respond with ONLY the JSON object. No markdown fences, no commentary."""

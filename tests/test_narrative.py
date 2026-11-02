@@ -291,6 +291,35 @@ class TestPrompt(unittest.TestCase):
         self.assertIn("one claim per card", system)
         self.assertIn("merge counts from different cards", system)
 
+    def test_prompt_bans_tier_words_in_claim_text(self):
+        # The decile-C3 regeneration failed on tier words alone:
+        # claims citing emerging cards called themselves "solid",
+        # and claims citing insufficient_data cards said "no
+        # pattern". The validator's tier-fidelity check is right —
+        # prose tiers add nothing the app does not already render —
+        # so the prompt now bans tier labels from claim text in the
+        # hard rules and echoes the ban in the headline and
+        # ruled-out section specs, with compliant patterns that
+        # state effect/range/count or the gate outcome instead.
+        # The validator itself is unchanged.
+        system, _user = narrative.build_prompt(PACK)
+        self.assertIn("NEVER write tier labels in claim text", system)
+        for word in ("solid", "emerging", "no pattern",
+                     "not enough data", "insufficient"):
+            self.assertIn(f'"{word}"', system)
+        self.assertGreaterEqual(
+            system.count("hyphenated or underscored"), 3)
+        self.assertIn("In the claim text itself, never name a tier",
+                      system)
+        self.assertIn(
+            "Never name a tier in this section's claim text either",
+            system)
+        self.assertIn("the likely range includes zero across",
+                      system)
+        self.assertIn("under the 20 needed to test", system)
+        self.assertIn("state the effect, the likely range, and the",
+                      system)
+
 
 class TestSpendLog(unittest.TestCase):
     def test_append_continues_numbering_and_totals(self):
