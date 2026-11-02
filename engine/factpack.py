@@ -7,14 +7,36 @@ shape the card templates specify for the report view.
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 from datetime import date
 
+from .model import parse_date
 from .registry import aggregates, race_cards, run_all
 from .weekly import build_weeks
 
 
-def build_fact_pack(athlete, prev_pack=None, generated_on=None):
+def _pinned_view(athlete, anchor):
+    """A copy of the athlete as of `anchor`: rows and races dated
+    after the anchor are excluded from every computation, and the
+    anchor pin makes `anchor_date` return the anchor itself (even
+    when the anchor falls after the last data date). The underlying
+    import is never edited -- boards are computed AS OF the anchor."""
+    return dataclasses.replace(
+        athlete,
+        sleep_nights=[n for n in athlete.sleep_nights
+                      if n.wake_date <= anchor],
+        daily=[d for d in athlete.daily if d.date <= anchor],
+        activities=[a for a in athlete.activities if a.date <= anchor],
+        races=[r for r in athlete.races if r.date <= anchor],
+        anchor_pin=anchor,
+    )
+
+
+def build_fact_pack(athlete, prev_pack=None, generated_on=None,
+                    anchor=None):
+    if anchor is not None:
+        athlete = _pinned_view(athlete, parse_date(anchor))
     weeks = build_weeks(athlete)
     cards = run_all(athlete, prev_pack=prev_pack)
     rcards = race_cards(athlete)

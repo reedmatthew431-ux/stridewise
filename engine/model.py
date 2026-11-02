@@ -95,6 +95,10 @@ class Athlete:
     activities: list = field(default_factory=list)
     races: list = field(default_factory=list)
     import_report: dict = field(default_factory=dict)
+    # Board-anchor pin (set by factpack.build_fact_pack when an anchor
+    # is given): the board is computed AS OF this date even when the
+    # underlying import carries earlier or later data.
+    anchor_pin: date | None = None
 
     # -- derived lookups -------------------------------------------------
     @property
@@ -117,7 +121,12 @@ class Athlete:
 
         Demo profiles are frozen imports, so "last 28 days" and "last
         180 days" are relative to the data, not to the wall clock.
+        When a board-anchor pin is set, the pin IS the anchor -- even
+        when it falls after the last data date (the board then simply
+        has no rows in the trailing gap).
         """
+        if self.anchor_pin is not None:
+            return self.anchor_pin
         dates = [n.wake_date for n in self.sleep_nights]
         dates += [d.date for d in self.daily]
         dates += [a.date for a in self.activities]

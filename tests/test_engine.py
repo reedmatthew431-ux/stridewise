@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from engine.factpack import build_fact_pack
-from engine.model import Athlete, Daily, SleepNight, load_fixture
+from engine.model import Athlete, Daily, Race, SleepNight, load_fixture
 from engine.stats import evaluate
 
 
@@ -126,6 +126,60 @@ class TestDemotion(unittest.TestCase):
         self.assertEqual(a1["tier"], "emerging")
         self.assertIsNotNone(a1["demotion"])
         self.assertEqual(a1["demotion"]["was"], "solid")
+
+
+class TestAnchorPin(unittest.TestCase):
+    def _spanning_athlete(self):
+        """Synthetic nights Aug 1 - Oct 31 2026 + races on both sides
+        of the 2026-10-26 pin."""
+        nights = []
+        d = date(2026, 8, 1)
+        i = 0
+        while d <= date(2026, 10, 31):
+            nights.append((d, 60.0 + (i % 5) * 10.0,
+                           480.0 - 0.3 * i, 45.0))
+            d += timedelta(days=1)
+            i += 1
+        ath = _athlete_from_nights(nights)
+        ath.races.append(Race(date=date(2026, 10, 17), name="Early"))
+        ath.races.append(Race(date=date(2026, 10, 31), name="Late"))
+        return ath
+
+    def test_anchor_excludes_later_rows_and_races(self):
+        ath = self._spanning_athlete()
+        pack = build_fact_pack(ath, anchor=date(2026, 10, 26))
+        self.assertEqual(pack["window_anchor"], "2026-10-26")
+        # Aug 1 - Oct 26 inclusive = 87 nights; the 5 later nights
+        # (Oct 27-31) are excluded from the aggregates.
+        self.assertEqual(pack["aggregates"]["nights_counted"], 87)
+        # Only the pre-anchor race gets cards (5 per race).
+        self.assertEqual(len(pack["race_cards"]), 5)
+        self.assertEqual({c["date"] for c in pack["race_cards"]},
+                         {"2026-10-17"})
+        # Default behavior is unchanged: anchor is the last data
+        # date and the late race is present.
+        full = build_fact_pack(ath)
+        self.assertEqual(full["window_anchor"], "2026-10-31")
+        self.assertEqual(full["aggregates"]["nights_counted"], 92)
+        self.assertEqual(len(full["race_cards"]), 10)
+
+    def test_anchor_after_last_data_date(self):
+        # Jaden's case: the shared pin (Oct 26) falls one day after
+        # his last data (Oct 25). The board must compute, and the
+        # pack's anchor must read the pin, not the last data date.
+        nights = []
+        d = date(2026, 9, 1)
+        i = 0
+        while d <= date(2026, 10, 25):
+            nights.append((d, 60.0 + (i % 5) * 10.0,
+                           480.0 - 0.3 * i, 45.0))
+            d += timedelta(days=1)
+            i += 1
+        ath = _athlete_from_nights(nights)
+        pack = build_fact_pack(ath, anchor="2026-10-26")
+        self.assertEqual(pack["window_anchor"], "2026-10-26")
+        self.assertEqual(len(pack["cards"]), 24)
+        self.assertEqual(pack["aggregates"]["nights_counted"], 55)
 
 
 if __name__ == "__main__":
