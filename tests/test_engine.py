@@ -14,7 +14,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from engine.factpack import build_fact_pack
-from engine.model import Athlete, Daily, Race, SleepNight, load_fixture
+from engine.model import Activity, Athlete, Daily, Race, SleepNight, \
+    load_fixture
+from engine.registry import _hard_effort_hr, race_cards
 from engine.stats import evaluate
 
 
@@ -126,6 +128,83 @@ class TestDemotion(unittest.TestCase):
         self.assertEqual(a1["tier"], "emerging")
         self.assertIsNotNone(a1["demotion"])
         self.assertEqual(a1["demotion"]["was"], "solid")
+
+
+class TestC3HardEfforts(unittest.TestCase):
+    """C3's comparison set (2026-11-02 rebuild): hard efforts only --
+    races plus runs whose avg HR is in the top quartile of run avg
+    HRs. The old all-runs set was dominated by easy runs, so a real
+    race-day under-read never looked unusual."""
+
+    def _athlete(self):
+        ath = Athlete(id="t", display_label="test", source="synthetic")
+        d = date(2026, 8, 1)
+        # 24 easy runs at 130 bpm.
+        for i in range(24):
+            ath.activities.append(Activity(
+                date=d + timedelta(days=i), kind="run", avg_hr_bpm=130.0))
+        # 8 tempo runs at 165 bpm.
+        for i in range(8):
+            ath.activities.append(Activity(
+                date=d + timedelta(days=40 + i), kind="run",
+                avg_hr_bpm=165.0))
+        # 5 races: four honest efforts at 182, one under-read at 145.
+        for i, hr in enumerate([182.0, 182.0, 182.0, 182.0, 145.0]):
+            rd = date(2026, 9, 5) + timedelta(days=7 * i)
+            ath.activities.append(Activity(
+                date=rd, kind="run", avg_hr_bpm=hr, is_race=True))
+            ath.races.append(Race(date=rd, name=f"Race {i}"))
+        return ath
+
+    def test_comparison_set_is_hard_efforts_only(self):
+        ath = self._athlete()
+        mean, sd, n = _hard_effort_hr(ath)
+        # Pool Q3 = 165 -> hard = 8 tempo + 4 honest races + the
+        # under-read race itself (races count by definition) = 13.
+        # The 24 easy runs at 130 are NOT in the set.
+        self.assertEqual(n, 13)
+        self.assertTrue(168.0 < mean < 170.0)
+
+    def test_under_read_flags_and_honest_race_does_not(self):
+        ath = self._athlete()
+        c3 = {c["date"]: c for c in race_cards(ath)
+              if c["question"] == "C3"}
+        under = c3["2026-10-03"]  # the 145 bpm race (i=4)
+        self.assertTrue(under["flagged"])
+        self.assertEqual(under["comparison_n"], 13)
+        self.assertTrue(168.0 < under["typical_avg_hr"] < 170.0)
+        honest = c3["2026-09-05"]  # a 182 bpm race
+        self.assertFalse(honest["flagged"])
+
+    def test_thin_history_gives_no_verdict(self):
+        # Only 4 runs carry HR in total (3 easy + the race itself):
+        # below the >= 5 floor for any comparison set.
+        ath = Athlete(id="t", display_label="test", source="synthetic")
+        for i in range(3):
+            ath.activities.append(Activity(
+                date=date(2026, 9, 1) + timedelta(days=i), kind="run",
+                avg_hr_bpm=150.0))
+        rd = date(2026, 9, 10)
+        ath.activities.append(Activity(
+            date=rd, kind="run", avg_hr_bpm=100.0, is_race=True))
+        ath.races.append(Race(date=rd, name="Only race"))
+        mean, sd, n = _hard_effort_hr(ath)
+        self.assertIsNone(mean)
+        c3 = next(c for c in race_cards(ath) if c["question"] == "C3")
+        self.assertFalse(c3["flagged"])
+        self.assertIsNone(c3["typical_avg_hr"])
+
+    def test_hard_set_below_five_gives_no_verdict(self):
+        # Pool has >= 5 HRs but the top quartile holds only 4 runs.
+        ath = Athlete(id="t", display_label="test", source="synthetic")
+        for i, hr in enumerate([100.0, 100.0, 100.0,
+                                200.0, 200.0, 200.0, 200.0]):
+            ath.activities.append(Activity(
+                date=date(2026, 9, 1) + timedelta(days=i), kind="run",
+                avg_hr_bpm=hr))
+        mean, sd, n = _hard_effort_hr(ath)
+        self.assertEqual(n, 4)
+        self.assertIsNone(mean)
 
 
 class TestAnchorPin(unittest.TestCase):

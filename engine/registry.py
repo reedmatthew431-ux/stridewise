@@ -786,14 +786,38 @@ def _ordinal(n):
     return f"{n}{suffix}"
 
 
+def _hard_effort_hr(athlete):
+    """(mean, sd, n) of avg HR over HARD EFFORTS only.
+
+    C3's comparison set (rebuilt 2026-11-02, Matt's lock). A hard
+    effort is a run that is a race (is_race) or whose avg HR is in
+    the top quartile of the athlete's run avg HRs: avg_hr >= Q3,
+    where Q3 is statistics.quantiles(hrs, n=4, method="inclusive")[2]
+    over every run with an HR reading (races included). The old
+    all-runs set was dominated by easy runs, so its mean sat near
+    easy pace and a genuine race-day under-read never looked
+    unusual. Deterministic: quantiles are a fixed function of the
+    data. Returns (None, None, n) when fewer than 5 hard efforts
+    carry HR -- too thin to judge against.
+    """
+    hrs = sorted(a.avg_hr_bpm for a in athlete.runs
+                 if a.avg_hr_bpm is not None)
+    if len(hrs) < 5:
+        return None, None, 0
+    q3 = statistics.quantiles(hrs, n=4, method="inclusive")[2]
+    hard = [a.avg_hr_bpm for a in athlete.runs
+            if a.avg_hr_bpm is not None
+            and (a.is_race or a.avg_hr_bpm >= q3)]
+    if len(hard) < 5:
+        return None, None, len(hard)
+    return statistics.mean(hard), statistics.stdev(hard), len(hard)
+
+
 def race_cards(athlete):
     """C-family per-race cards. No races -> no cards (not insufficient)."""
     cards = []
     sleep = athlete.sleep_by_date
-    run_hr = [a.avg_hr_bpm for a in athlete.runs
-              if a.avg_hr_bpm is not None]
-    hr_mean = statistics.mean(run_hr) if len(run_hr) >= 5 else None
-    hr_sd = statistics.stdev(run_hr) if len(run_hr) >= 5 else None
+    hr_mean, hr_sd, hr_n = _hard_effort_hr(athlete)
     for r in sorted(athlete.races, key=lambda x: x.date):
         c1_ok = (r.field_size and r.matched_finishers
                  and r.matched_finishers >= 40
@@ -887,7 +911,10 @@ def race_cards(athlete):
             "conditions_note": r.conditions_note,
             "sentence": c2_sentence,
         }
-        # C3: flag when race HR is implausibly low vs run history.
+        # C3: flag when race HR is implausibly low vs the HARD-
+        # EFFORT comparison set (races + top-quartile-HR runs; see
+        # _hard_effort_hr). Same 2 SD rule as before, new set: the
+        # "typical" the sentence cites is the hard-effort typical.
         race_act = [a for a in athlete.activities
                     if a.date == r.date and a.is_race and a.avg_hr_bpm]
         race_hr = race_act[0].avg_hr_bpm if race_act else None
@@ -898,6 +925,7 @@ def race_cards(athlete):
             "flagged": bool(flagged),
             "race_avg_hr": race_hr,
             "typical_avg_hr": round(hr_mean, 1) if hr_mean else None,
+            "comparison_n": hr_n,
             "sentence": (
                 f"Unreliable for this race: {race_hr} bpm average, "
                 f"unusually low (typical {round(hr_mean, 1)}) — not "
