@@ -145,19 +145,39 @@ Two adapters sit behind one interface (`discover(url)`):
   off until confirmed. One discovered entry run through
   calibration reproduced the wired C1 numbers exactly.
 - **Athletic.net** (high school): the identity pattern is the
-  same and the parser for the page's rendered structure
-  (identity, season records, rankings/bests) is implemented and
-  fixture-tested — but the live page is a JavaScript app shell.
-  Verified 2026-11-02: the athlete page and the school records
-  page return ~10 KB of Angular shell whose only
+  same, but the page is a JavaScript app — a plain fetch
+  returns only the Angular shell (~10 KB whose only
   athlete-specific content is the `<title>`; the legacy .aspx
-  athlete URLs redirect to the homepage. The stdlib fetch stack
-  cannot run the app, so live discovery reports
-  `status: "blocked"` (reason `"js_wall"`) with the evidence and
-  only the title-derived name — the block is reported, never
-  papered over. Field calibration is TFRRS-only in this build
-  regardless: Athletic.net entries carry
-  `calibration_table = null`, and no field match is faked.
+  athlete URLs redirect to the homepage). Discovery is
+  therefore a two-step, agent-run flow, like the rest of this
+  build's refreshes: the operator renders the page in their
+  browser at refresh time, saves the rendered page, and
+  discovery parses that copy:
+
+  ```bash
+  python -m engine.discover <athletic.net-url> [out.json] --rendered <saved-page>
+  ```
+
+  The rendered copy is written through to the cache as
+  `<sha256>.rendered.html`. Given no rendered copy, the plain
+  fetch still reports `status: "blocked"` (reason `"js_wall"`)
+  with the evidence — the wall is reported, never papered
+  over. A live-browser proof (2026-11-02) confirmed the
+  rendered page carries identity, rankings/bests, and results
+  — and that logged-out viewing masks part of the history:
+  some results render as "Hidden Meet" entries with time and
+  place withheld, and some season-record values render as
+  "########". Masked results are data, not gaps to fill: each
+  is carried as an explicit masked entry (withheld fields
+  null), discovery reports `results_found` / `results_visible`
+  / `results_masked`, and any mask makes the status `"partial"`
+  with the reason stated. A masked value is never invented or
+  inferred — a best visible in the Rankings panel is reported
+  as a best (`bests_source: "rankings_panel"`) and the masked
+  result behind it stays masked. Field calibration is
+  TFRRS-only in this build regardless: Athletic.net entries
+  carry `calibration_table = null`, and no field match is
+  faked.
 
 Fetch discipline is calibration's: descriptive User-Agent,
 sequential with a short delay, every page cached under

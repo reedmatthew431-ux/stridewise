@@ -105,6 +105,28 @@ Season Records
 2024 Sample High School 9th Grade
 """
 
+# Logged-out rendering: part of the history is masked. The
+# 3 Miles best IS visible in the Rankings panel while its only
+# detailed result is a Hidden Meet entry — the masked result
+# must stay masked (no inference from the panel). One further
+# row has its time rendered as '########'.
+ATHLETICNET_RENDERED_MASKED = """Jamie Sample - NJ Cross Country Bio
+Log In or Create Free Account to View All Stats
+Rankings
+2026
+5,000 Meters - 18:50.2
+3 Miles - 19:40.0
+Season Records
+2026
+5000 Meters
+26 18:50.2PB Sep 5 Example Classic (Varsity)
+Hidden Meet
+14 ######## Oct 3 Example Invitational (Varsity)
+3 Miles
+Hidden Meet
+2024 Sample High School 9th Grade
+"""
+
 
 class TestTfrrsParse(unittest.TestCase):
     def test_identity(self):
@@ -196,6 +218,12 @@ class TestAthleticNet(unittest.TestCase):
         self.assertEqual(r["finish_time_s"], 18 * 60 + 50.2)
         self.assertEqual(r["distance_m"], 5000.0)
         self.assertIsNone(r["calibration_table"])
+        self.assertFalse(r["masked"])
+
+    def test_short_meter_label(self):
+        self.assertEqual(D.distance_for_label("5000m"), 5000.0)
+        self.assertEqual(D.distance_for_label("2 Miles"),
+                         round(2 * 1609.344, 1))
 
     def test_shell_page_yields_no_races(self):
         # The shell has a title and nothing else: the parser must
@@ -204,6 +232,159 @@ class TestAthleticNet(unittest.TestCase):
         p = D.parse_athleticnet_rendered(visible, "Jamie Sample")
         self.assertEqual(p["races"], [])
         self.assertEqual(p["bests"], {})
+
+
+class TestAthleticNetMasked(unittest.TestCase):
+    URL = "https://www.athletic.net/athlete/700001/cross-country"
+
+    def test_masked_entries_parsed_explicitly(self):
+        p = D.parse_athleticnet_rendered(ATHLETICNET_RENDERED_MASKED,
+                                         "Jamie Sample")
+        self.assertEqual(len(p["races"]), 4)
+        visible = [r for r in p["races"] if not r["masked"]]
+        masked = [r for r in p["races"] if r["masked"]]
+        self.assertEqual(len(visible), 1)
+        self.assertEqual(visible[0]["finish_time_s"], 18 * 60 + 50.2)
+        self.assertEqual(len(masked), 3)
+        for r in masked:
+            self.assertIsNone(r["finish_time_s"])
+            self.assertIsNone(r["calibration_table"])
+
+    def test_hidden_meet_keeps_only_what_is_shown(self):
+        p = D.parse_athleticnet_rendered(ATHLETICNET_RENDERED_MASKED,
+                                         "Jamie Sample")
+        hidden = [r for r in p["races"]
+                  if r["meet_name"] == "Hidden Meet"]
+        self.assertEqual(len(hidden), 2)
+        for r in hidden:
+            self.assertIsNone(r["place"])
+            self.assertIsNone(r["finish_time_s"])
+        by_event = {r["event_label"] for r in hidden}
+        self.assertEqual(by_event, {"5000 Meters", "3 Miles"})
+
+    def test_hash_row_keeps_visible_fields_only(self):
+        p = D.parse_athleticnet_rendered(ATHLETICNET_RENDERED_MASKED,
+                                         "Jamie Sample")
+        rows = [r for r in p["races"]
+                if r["meet_name"] == "Example Invitational"]
+        self.assertEqual(len(rows), 1)
+        r = rows[0]
+        self.assertTrue(r["masked"])
+        self.assertIsNone(r["finish_time_s"])
+        self.assertEqual(r["place"], 14)  # printed on the page
+        self.assertEqual(r["date"], "2026-10-03")
+
+    def test_no_inference_from_rankings_panel(self):
+        # The 3 Miles best is in the Rankings panel; its only
+        # detailed result is masked and must stay masked, while
+        # the best itself is still reported as a best.
+        p = D.parse_athleticnet_rendered(ATHLETICNET_RENDERED_MASKED,
+                                         "Jamie Sample")
+        self.assertEqual(p["bests"]["3 Miles"], 19 * 60 + 40.0)
+        three_mile = [r for r in p["races"]
+                      if r["event_label"] == "3 Miles"]
+        self.assertEqual(len(three_mile), 1)
+        self.assertTrue(three_mile[0]["masked"])
+        self.assertIsNone(three_mile[0]["finish_time_s"])
+
+    def test_partial_status_and_counts(self):
+        p = D.parse_athleticnet_rendered(ATHLETICNET_RENDERED_MASKED,
+                                         "Jamie Sample")
+        out = D.athleticnet_output(self.URL, p)
+        self.assertEqual(out["status"], "partial")
+        self.assertEqual(
+            out["reason"],
+            "some results are hidden for logged-out viewing")
+        self.assertEqual(out["results_found"], 4)
+        self.assertEqual(out["results_visible"], 1)
+        self.assertEqual(out["results_masked"], 3)
+        self.assertEqual(out["bests_source"], "rankings_panel")
+
+    def test_all_visible_is_ok(self):
+        p = D.parse_athleticnet_rendered(ATHLETICNET_RENDERED,
+                                         "Jamie Sample")
+        out = D.athleticnet_output(self.URL, p)
+        self.assertEqual(out["status"], "ok")
+        self.assertEqual(out["results_masked"], 0)
+        self.assertNotIn("reason", out)
+
+    def test_rendered_file_flow(self):
+        import hashlib
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            rendered = os.path.join(td, "page.txt")
+            with open(rendered, "w") as fh:
+                fh.write(ATHLETICNET_RENDERED_MASKED)
+            cache_dir = os.path.join(td, "cache")
+            out = D.discover_athleticnet(
+                self.URL, rendered_path=rendered, cache_dir=cache_dir)
+            self.assertEqual(out["status"], "partial")
+            self.assertEqual(out["source"], "rendered")
+            self.assertEqual(out["athlete_name"], "Jamie Sample")
+            # The rendered copy is written through to the cache.
+            cached = os.path.join(
+                cache_dir,
+                hashlib.sha256(self.URL.encode()).hexdigest()
+                + ".rendered.html")
+            self.assertTrue(os.path.exists(cached))
+
+    def test_rendered_shell_still_blocked(self):
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            rendered = os.path.join(td, "shell.html")
+            with open(rendered, "w") as fh:
+                fh.write(ATHLETICNET_SHELL)
+            out = D.discover_athleticnet(
+                self.URL, rendered_path=rendered,
+                cache_dir=os.path.join(td, "cache"))
+            self.assertEqual(out["status"], "blocked")
+            self.assertEqual(out["reason"], "js_wall")
+
+    def test_plain_fetch_shell_still_blocked(self):
+        # Seed the fetch cache with the shell so no network is
+        # touched: the plain path must keep reporting the wall.
+        import hashlib
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            path = os.path.join(
+                td, hashlib.sha256(self.URL.encode()).hexdigest()
+                + ".html")
+            with open(path, "w") as fh:
+                fh.write(ATHLETICNET_SHELL)
+            out = D.discover_athleticnet(self.URL, cache_dir=td)
+            self.assertEqual(out["status"], "blocked")
+            self.assertEqual(out["reason"], "js_wall")
+            self.assertEqual(out["athlete_name"], "Jamie Sample")
+            self.assertEqual(out["results_found"], 0)
+
+    def test_cli_rendered_flag(self):
+        import io
+        import json
+        import os
+        import tempfile
+        from contextlib import redirect_stdout
+        with tempfile.TemporaryDirectory() as td:
+            rendered = os.path.join(td, "page.txt")
+            with open(rendered, "w") as fh:
+                fh.write(ATHLETICNET_RENDERED_MASKED)
+            out_path = os.path.join(td, "out.json")
+            buf = io.StringIO()
+            old_cache = D.ATHLETICNET_CACHE_DIR
+            D.ATHLETICNET_CACHE_DIR = os.path.join(td, "cache")
+            try:
+                with redirect_stdout(buf):
+                    rc = D.main(["discover", self.URL, out_path,
+                                 "--rendered", rendered])
+            finally:
+                D.ATHLETICNET_CACHE_DIR = old_cache
+            self.assertEqual(rc, 0)
+            with open(out_path) as fh:
+                written = json.load(fh)
+            self.assertEqual(written["status"], "partial")
+            self.assertEqual(written["results_masked"], 3)
 
 
 if __name__ == "__main__":
