@@ -213,6 +213,45 @@ class TestOrchestration(unittest.TestCase):
         self.assertTrue(any("finish_reason=length" in f for f in
                             out["validation"]["final_failures"]))
 
+    def test_empty_completion_is_a_named_failure_and_retries(self):
+        # The hardened path: an empty completion must surface as a
+        # validation failure literally named "empty completion",
+        # feed the retry prompt, and never raise.
+        calls = []
+
+        def fake(system, user):
+            calls.append(user)
+            if len(calls) == 1:
+                return ("", {"prompt_tokens": 10,
+                             "completion_tokens": 6000}, "length")
+            return (json.dumps(_report()), {"prompt_tokens": 12,
+                                            "completion_tokens": 6},
+                    "stop")
+
+        out, usages = generate_report(PACK, call=fake)
+        self.assertEqual(out["source"], "spark")
+        self.assertEqual(out["attempts"], 2)
+        self.assertIn("empty completion", calls[1])
+
+    def test_empty_completion_usage_is_recorded(self):
+        # Usage from an empty, length-truncated response must reach
+        # the caller (and so the spend log) even though no draft was
+        # produced: the tokens were billed.
+        def fake(system, user):
+            return (None, {"prompt_tokens": 10224,
+                           "completion_tokens": 6000,
+                           "reasoning_tokens": 6000}, "length")
+
+        out, usages = generate_report(PACK, call=fake)
+        self.assertEqual(out["source"], "template")
+        self.assertEqual(len(usages), 2)
+        for u in usages:
+            self.assertEqual(u["prompt_tokens"], 10224)
+            self.assertEqual(u["completion_tokens"], 6000)
+            self.assertEqual(u["reasoning_tokens"], 6000)
+        self.assertTrue(any("empty completion" in f for f in
+                            out["validation"]["final_failures"]))
+
     def test_contributor_tier_banned(self):
         with self.assertRaises(ValueError):
             call_spark("s", "u", model="muse-spark-1.3-contributor")

@@ -324,13 +324,17 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         raise RuntimeError("redirect refused, verify the endpoint")
 
 
-def call_spark(system, user, model=MODEL, max_tokens=6000):
+def call_spark(system, user, model=MODEL, max_tokens=6000,
+               reasoning_effort=None):
     """One chat completion on the standard tier. Returns
     (content_text, usage_dict, finish_reason). The token budget is
     generous on purpose: this model's reasoning tokens count against
     max_tokens, and a tight cap returns empty content (measured on the
-    first live attempt, 2026-11-02). Raises on transport or API
-    errors."""
+    first live attempt, 2026-11-02). reasoning_effort, when given, is
+    passed through to the API as a reasoning control. The usage dict
+    is returned for EVERY response the API gives back, including
+    empty and length-truncated ones, so the spend log never loses a
+    billed call. Raises on transport or API errors."""
     if "contributor" in model:
         raise ValueError("contributor tier is banned for app calls")
     if model != MODEL:
@@ -347,22 +351,26 @@ def call_spark(system, user, model=MODEL, max_tokens=6000):
         "temperature": 0.3,
         "max_tokens": max_tokens,
     }
+    if reasoning_effort is not None:
+        payload["reasoning_effort"] = reasoning_effort
     req = urllib.request.Request(
         API_BASE + "/chat/completions",
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"})
     add_surrogate_to_request(req, CONNECTOR, allowed_hosts=API_HOSTS)
     opener = urllib.request.build_opener(_NoRedirect())
-    with opener.open(req, timeout=180) as resp:
+    with opener.open(req, timeout=600) as resp:
         body = read_json_response(resp)
     choice = body["choices"][0]
     content = choice["message"].get("content")
     usage = body.get("usage", {})
+    details = usage.get("completion_tokens_details") or {}
     return content, {
         "prompt_tokens": usage.get("prompt_tokens",
                                    usage.get("input_tokens")),
         "completion_tokens": usage.get("completion_tokens",
                                        usage.get("output_tokens")),
+        "reasoning_tokens": details.get("reasoning_tokens"),
     }, choice.get("finish_reason")
 
 
@@ -440,6 +448,15 @@ def generate_report(pack, call=call_spark, max_attempts=2):
         usage = dict(usage, model=MODEL,
                      purpose=f"analyst report attempt {attempts}")
         usages.append(usage)
+        if not isinstance(content, str) or not content.strip():
+            # An empty completion is a clean validation failure,
+            # never an exception: reasoning consumed the whole
+            # budget and no visible text came back. The call's usage
+            # is already recorded above, so the spend is never lost.
+            failures = [
+                f"empty completion (finish_reason={finish}): the "
+                f"model returned no visible text"]
+            continue
         try:
             sections = _parse_content(content)
         except (json.JSONDecodeError, TypeError, ValueError) as exc:
