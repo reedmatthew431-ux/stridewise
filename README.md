@@ -31,6 +31,11 @@ reason.
   card sentences, and race-context cards.
 - `engine/factpack.py` — fact-pack assembly (the only thing the
   narrative layer ever sees).
+- `engine/ask.py` — "test your own idea": precomputed ask-a-correlation
+  answers for every driver × outcome pair the board does not already
+  answer, each run through the same gate (registry pairs route to the
+  board card; steps and raw pace are never variables; stage-share
+  answers carry the compositional caveat).
 - `engine/calibrate.py` — in-app course calibration for race card
   C1 (see "Course calibration" below). The one module that touches
   the network; the statistics engine itself stays zero-API,
