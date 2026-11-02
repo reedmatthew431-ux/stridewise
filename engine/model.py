@@ -29,6 +29,13 @@ class SleepNight:
     bedtime_min_past_21: float  # unwrapped: 20:00 -> -60, 21:00 -> 0, 00:30 -> 210
     sleep_efficiency_pct: float | None = None
     awake_min: float | None = None  # time in bed not asleep, where reported
+    # Sleep-stage minutes within the night's asleep time, where the
+    # source reports stages (added 2026-11-02 for A14). All three are
+    # None when the source carries no stage data for the night; they
+    # are never derived from duration.
+    rem_min: float | None = None
+    light_min: float | None = None
+    deep_min: float | None = None
     excluded_sensor_unreliable: bool = False
     exclusion_reason: str | None = None
 
@@ -172,6 +179,12 @@ def load_normalized(path: str) -> Athlete:
                                   else float(n["sleep_efficiency_pct"])),
             awake_min=(None if n.get("awake_min") is None
                        else float(n["awake_min"])),
+            rem_min=(None if n.get("rem_min") is None
+                     else float(n["rem_min"])),
+            light_min=(None if n.get("light_min") is None
+                       else float(n["light_min"])),
+            deep_min=(None if n.get("deep_min") is None
+                      else float(n["deep_min"])),
             excluded_sensor_unreliable=bool(n.get("excluded_sensor_unreliable", False)),
             exclusion_reason=n.get("exclusion_reason"),
         ))

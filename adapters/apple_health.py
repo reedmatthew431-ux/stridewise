@@ -27,6 +27,12 @@ Rules implemented (see task spec):
     clock_min >= 720 else clock_min+180.
     Multiple sessions sharing a wake date merge into ONE night
     (earliest bedtime, summed duration, latest wake).
+  * Sleep stages (for A14): each Asleep segment is classified by
+    value -- AsleepREM -> rem_min, AsleepDeep -> deep_min,
+    AsleepCore -> light_min. AsleepUnspecified and legacy Asleep
+    carry no stage: their minutes count toward duration only. A
+    night emits stage minutes iff at least one of its segments is
+    stage-classified; otherwise all three stage fields are null.
   * sleep_efficiency_pct: always null (Apple Health does not report it).
   * excluded_sensor_unreliable: false for all rows in v1.
   * Implausible rows are REJECTED and counted: sleep duration <= 0
@@ -82,6 +88,15 @@ ASLEEP_VALUES = {
     "HKCategoryValueSleepAnalysisAsleepDeep",
     "HKCategoryValueSleepAnalysisAsleepREM",
     "HKCategoryValueSleepAnalysisAsleepUnspecified",
+}
+# Stage classification per Asleep segment value. Legacy "Asleep" and
+# "AsleepUnspecified" carry no stage: their minutes count toward
+# duration but toward no stage. A night emits stage minutes iff at
+# least one of its segments is stage-classified.
+STAGE_BY_VALUE = {
+    "HKCategoryValueSleepAnalysisAsleepREM": "rem",
+    "HKCategoryValueSleepAnalysisAsleepDeep": "deep",
+    "HKCategoryValueSleepAnalysisAsleepCore": "light",
 }
 SLEEP_TYPE = "HKCategoryTypeIdentifierSleepAnalysis"
 RHR_TYPE = "HKQuantityTypeIdentifierRestingHeartRate"
@@ -155,7 +170,7 @@ class Adapter:
         self.rows_in = 0
         self.window_excluded = 0
         self.rejections = {}  # reason -> count
-        # Sleep: wake_date -> {"segments": [(start_dt, end_dt)], "latest_wake": dt}
+        # Sleep: wake_date -> {"segments": [(start_dt, end_dt, stage)], "latest_wake": dt}
         self.sleep = {}
         # Awake segments per wake date, for awake_min derivation.
         self.awake = {}
@@ -265,7 +280,8 @@ class Adapter:
             return
         night = self.sleep.setdefault(
             wake_date, {"segments": [], "latest_wake": end_dt})
-        night["segments"].append((start_dt, end_dt))
+        night["segments"].append(
+            (start_dt, end_dt, STAGE_BY_VALUE.get(value)))
         if end_dt > night["latest_wake"]:
             night["latest_wake"] = end_dt
 
@@ -334,14 +350,15 @@ class Adapter:
         for wake_date in sorted(self.sleep_wake_dates - set(self.sleep)):
             self.reject("sleep_duration_out_of_range")
         for wake_date in sorted(self.sleep):
-            segments = sorted(self.sleep[wake_date]["segments"])
+            segments = sorted(self.sleep[wake_date]["segments"],
+                              key=lambda seg: (seg[0], seg[1]))
             if not segments:
                 continue
             # Session split: new session when a segment starts > 60 min
             # after the previous segment ended.
             sessions = 1
             prev_end = segments[0][1]
-            for s, e in segments[1:]:
+            for s, e, _stage in segments[1:]:
                 if (s - prev_end).total_seconds() > 3600:
                     sessions += 1
                 if e > prev_end:
@@ -349,7 +366,7 @@ class Adapter:
             if sessions >= 2:
                 merged_duplicate_nights += 1
             duration_min = sum(
-                (e - s).total_seconds() for s, e in segments) / 60.0
+                (e - s).total_seconds() for s, e, _st in segments) / 60.0
             if duration_min <= 0 or duration_min > 1440:
                 self.reject("sleep_duration_out_of_range")
                 continue
@@ -361,7 +378,19 @@ class Adapter:
                 # fragment merged into a real night is not rejected.
                 self.reject("sleep_fragment_under_60_min")
                 continue
-            bedtime = min(s for s, _ in segments)
+            bedtime = min(s for s, _e, _st in segments)
+            # Stage minutes: summed per stage over stage-classified
+            # segments. The night carries stage fields iff at least
+            # one segment is classified; unclassified minutes
+            # (Unspecified / legacy Asleep) count toward duration
+            # only. All three fields are null together when no
+            # segment is classified.
+            stage_min = {"rem": 0.0, "light": 0.0, "deep": 0.0}
+            any_stage = False
+            for s, e, st in segments:
+                if st is not None:
+                    any_stage = True
+                    stage_min[st] += (e - s).total_seconds() / 60.0
             # awake_min: summed Awake segments for this wake date
             # (0.0 when the night has Asleep segments but no detected
             # awakenings). This is detected mid-sleep wakefulness;
@@ -378,6 +407,12 @@ class Adapter:
                 "bedtime_min_past_21": bedtime_min_past_21(bedtime),
                 "sleep_efficiency_pct": None,
                 "awake_min": awake_min,
+                "rem_min": (round(stage_min["rem"], 2)
+                            if any_stage else None),
+                "light_min": (round(stage_min["light"], 2)
+                              if any_stage else None),
+                "deep_min": (round(stage_min["deep"], 2)
+                             if any_stage else None),
                 "excluded_sensor_unreliable": False,
                 "exclusion_reason": None,
             })
@@ -426,6 +461,7 @@ class Adapter:
                     "Sleep duration sums Asleep* segments only; InBed/Awake never counted. Bedtime is the earliest Asleep segment start, as minutes past 21:00 unwrapped across midnight.",
                     "awake_min sums Awake segments per wake date (0.0 when none detected) for question A9. This is detected mid-sleep wakefulness; sleep-onset latency is not captured in stages-era exports, unlike Garmin's awake seconds in the sleep window. InBed segments are never used for awake: old InBed blocks can span whole days (6-12h artifacts on 2023 nights) and no InBed segments appear in 2026 windows.",
                     "sleep_efficiency_pct is always null: Apple Health does not report it.",
+                    "Stage minutes (rem_min/light_min/deep_min, for A14): AsleepREM/AsleepDeep/AsleepCore segments summed per wake date. AsleepUnspecified and legacy Asleep minutes count toward duration but no stage. A night carries stage fields only when at least one of its segments is stage-classified; otherwise all three are null.",
                     "excluded_sensor_unreliable is false for all rows in v1; implausible rows are rejected instead.",
                     "rows_in counts relevant source records only (sleep, resting HR, HRV, workouts); other HealthKit types skipped without counting. Records nested in Correlation elements skipped (they duplicate top-level records).",
                     "window_excluded counts relevant source records dropped by the window cutoff (sleep judged by wake date, others by start date).",

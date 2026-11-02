@@ -267,6 +267,13 @@ class Adapter:
                 "bedtime_min_past_21": bedtime_min_past_21(night["bedtime"]),
                 "sleep_efficiency_pct": None,
                 "awake_min": round(night["awake"] / 60.0, 2),
+                # Stage minutes (for A14): the same stage seconds
+                # that make up duration_min, split out. Always
+                # present on an emitted Garmin night, because
+                # duration here IS the stage sum.
+                "rem_min": round(night["rem"] / 60.0, 2),
+                "light_min": round(night["light"] / 60.0, 2),
+                "deep_min": round(night["deep"] / 60.0, 2),
                 "excluded_sensor_unreliable": False,
                 "exclusion_reason": None,
             })
@@ -307,6 +314,7 @@ class Adapter:
                     "Activity dates are local dates from startTimeLocal (local wall-clock packed into epoch ms; differs from startTimeGmt by exactly the UTC offset). No timezone conversion applied to activities.",
                     "Sleep: DI-Connect-Wellness sleepData JSONs; sleepStart/EndTimestampGMT are naive GMT, converted to America/New_York. Wake date is the converted local end date (equals calendarDate on all records in this export; calendarDate is a cross-check, not the source of truth). Bedtime is the converted local start, as minutes past 21:00 unwrapped across midnight.",
                     "Sleep duration = (deep + light + REM seconds) / 60 (asleep only; awake seconds in bed not counted; timestamp span not used). awake_min = awakeSleepSeconds / 60, summed across merged records (time in bed not asleep, for question A9). sleep_efficiency_pct is always null: no efficiency field is reported, and no proxy is derived.",
+                    "Stage minutes (rem_min/light_min/deep_min, for A14): the same stage seconds that make up duration, split out per night. Always present on an emitted night, because duration here is the stage sum.",
                     "Daily: DI-Connect-Aggregator UDSFile JSONs; resting_hr_bpm is restingHeartRate (finalized day value), not currentDayRestingHeartRate (intraday estimate; the two differ on 520/655 days by 1-3 bpm). hrv_ms is always null: no HRV field exists in UDS or bioMetrics_latest.",
                     "excluded_sensor_unreliable is false for all rows in v1; implausible rows are rejected instead. A null distance or null avg HR is not a rejection (activity emitted with that field null).",
                     "Fragment guard (approved 2026-10-30): merged nights under 60 minutes asleep are tracking fragments, rejected and counted as sleep_fragment_under_60_min. The guard runs after duplicate-night merging, so a fragment merged into a real night is kept.",

@@ -156,6 +156,15 @@ profiles are injected at deploy time from the workspace, never committed.
   days by 1-3 bpm). HRV is null: no HRV field exists in UDS or
   bioMetrics_latest. Garmin's own race predictions, training
   history, and scores are deliberately never read.
+- **A14 (REM share -> next-morning RHR, added 2026-11-02)** is the
+  caveat version of the stage-share question: sleep stages are
+  compositional (the shares sum to 100%), so the card sentence
+  carries the caveat verbatim -- a higher REM share may reflect
+  less light sleep rather than more REM itself. Stage minutes
+  (`rem_min` / `light_min` / `deep_min`) are populated by the
+  adapters from source stage data (Apple: AsleepREM/Deep/Core
+  segments; Garmin: sleep stage seconds) and are null where the
+  source carries none -- never derived from duration.
 - **Load -> sleep questions are OUT by design** and are never offered.
 - Windows anchor at the profile's latest data date (frozen imports),
   not the wall clock.

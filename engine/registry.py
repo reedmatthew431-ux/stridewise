@@ -1,14 +1,16 @@
 """Stridewise insight registry (v1, closed 2026-10-22; A9 added 2026-10-28;
-A10/A11/B8/A12/A13/B9 added 2026-10-28):
-27 questions.
+A10/A11/B8/A12/A13/B9 added 2026-10-28; A14 added 2026-11-02):
+28 questions.
 
-Family A (sleep, 13): A1 bedtime -> duration; A2 bedtime variability ->
+Family A (sleep, 14): A1 bedtime -> duration; A2 bedtime variability ->
 next-morning RHR; A3 duration -> next-day RHR; A4 duration -> next-day
 run quality; A5 sleep consistency -> next-day run quality; A6 bedtime ->
 efficiency (source-aware); A7 sleep-regularity (midpoint scatter) ->
 RHR / run quality; A8 social jetlag -> Sunday-night duration / Monday
 run quality; A9 awake time in bed -> next-morning RHR; A10 weekend
-nights -> sleep length; A11 awake time in bed -> next-morning HRV.
+nights -> sleep length; A11 awake time in bed -> next-morning HRV;
+A14 REM share -> next-morning RHR (stage shares are compositional;
+the card sentence carries the caveat verbatim -- see A14_CAVEAT).
 Family B (training load, 9): B1 ramp (ACWR) -> next-week run quality;
 B2 monotony -> next-week RHR trend; B3 mileage volatility -> following
 -week run quality; B4 long-run share -> late-run fade; B5 training
@@ -366,6 +368,38 @@ def b_A13(athlete):
     return usable, collected, True, ""
 
 
+# The compositional caveat A14's card sentence must carry verbatim
+# (Matt's lock, 2026-11-02: the caveat version of the stage-share
+# question). Stage shares sum to 100%, so a REM-share association
+# cannot by itself say which stage is doing the work.
+A14_CAVEAT = (
+    "Sleep stages add up to 100%: a higher REM share means a lower "
+    "share of light or deep sleep, so this finding may reflect less "
+    "light sleep rather than more REM itself.")
+
+
+def b_A14(athlete):
+    sleep, daily = _nightly_base(athlete)
+    has_stages = any(n.rem_min is not None for n in athlete.sleep_nights)
+    has_rhr = any(d.resting_hr_bpm is not None for d in athlete.daily)
+    usable, collected = [], []
+    for n in athlete.sleep_nights:
+        d = n.wake_date
+        rhr = daily.get(d).resting_hr_bpm if daily.get(d) else None
+        if n.rem_min is not None and n.duration_min > 0 and rhr is not None:
+            share = n.rem_min / n.duration_min
+            collected.append((d, share, rhr))
+            if not n.excluded_sensor_unreliable:
+                usable.append((d, share, rhr))
+    ok = has_stages and has_rhr
+    reason = ""
+    if not has_stages:
+        reason = "your export has no sleep stage data"
+    elif not has_rhr:
+        reason = "your export has no resting heart rate"
+    return usable, collected, ok, reason
+
+
 def _weeks(athlete):
     return build_weeks(athlete)
 
@@ -592,6 +626,9 @@ QUESTIONS = [
     ("A13", "sleep", "nightly", "Previous night's sleep length and tonight's sleep length",
      "longer previous nights", "shorter previous nights", "tonight's sleep length",
      "duration", "nights", "180 days", 60.0, ("abs", 15.0)),
+    ("A14", "sleep", "nightly", "REM sleep share and next-morning resting heart rate",
+     "higher-REM-share nights", "lower-REM-share nights", "next-morning resting HR",
+     "hr", "nights", "180 days", 0.10, ("abs", 1.0)),
     ("B1", "load", "weekly", "Training ramp and next week's run quality",
      "higher-ramp weeks", "lower-ramp weeks", "next-week run pace",
      "pace", "weeks", "26 weeks", 1.0, ("pace_pct",)),
@@ -628,6 +665,7 @@ BUILDERS = {
     "A8-Duration": lambda a: b_A8(a, "duration"),
     "A8-Quality": lambda a: b_A8(a, "quality"),
     "A9": b_A9, "A10": b_A10, "A11": b_A11, "A12": b_A12, "A13": b_A13,
+    "A14": b_A14,
     "B1": b_B1, "B2": b_B2, "B3": b_B3, "B5": b_B5, "B6": b_B6, "B7": b_B7,
     "B8": b_B8, "B9": b_B9,
 }
@@ -654,6 +692,7 @@ METHODS = {
     "B8": "Each week's total run mileage paired with the following week's mean resting heart rate. Effect is per 10 km of weekly mileage, over the last 26 weeks, with a week-block bootstrap 95% likely range. Level, not change: this asks whether higher-mileage weeks precede lower RHR levels, distinct from B2's monotony -> trend question.",
     "A12": "Each night's sleep midpoint (bedtime plus half the night's length, unwrapped so midnight never breaks the scale) paired with the next morning's resting heart rate. Effect is per hour later midpoint, over the last 180 days, with a week-block bootstrap 95% likely range.",
     "A13": "Each night's length paired with the immediately preceding night's length. Effect is minutes of tonight's length per hour of last night's length, over the last 180 days, with a week-block bootstrap 95% likely range.",
+    "A14": "Each night's REM share (REM minutes divided by that night's asleep minutes, where the source reports sleep stages) paired with the next morning's resting heart rate. Effect is per 10 percentage points of REM share, over the last 180 days, with a week-block bootstrap 95% likely range. Stage shares are compositional (they sum to 100%), so the card sentence carries that caveat verbatim.",
     "B9": "Each week's qualifying long-run distance paired with the following week's mean resting heart rate. Effect is per 5 km of long-run distance, over the last 26 weeks, with a week-block bootstrap 95% likely range. Weeks without a qualifying long run contribute no pair.",
     "B1": "Each week's ramp (that week's mileage divided by the mean of the prior 4 weeks' mileage) paired with the following week's mean run pace. Effect is per 1.0 of ramp, over the last 26 weeks, with a week-block bootstrap 95% likely range.",
     "B2": "Each week's monotony (mean daily mileage divided by its standard deviation) paired with the change in mean resting heart rate the following week. Effect is per 1.0 of monotony, over the last 26 weeks, with a week-block bootstrap 95% likely range.",
@@ -747,6 +786,8 @@ def run_question(athlete, qid, prev_card=None):
         card["binding_rule"] = "required field absent"
         card["field_reason"] = field_reason
         card["sentence"] = _sentence(q, card)
+        if qid == "A14":
+            card["sentence"] += " " + A14_CAVEAT
         return card
     # Pace floor: 1% of the mean outcome value.
     if floor_spec[0] == "pace_pct":
@@ -762,6 +803,10 @@ def run_question(athlete, qid, prev_card=None):
     card["density"] = ev.get("density")
     card["completeness"] = ev.get("completeness")
     card["sentence"] = _sentence(q, card)
+    if qid == "A14":
+        # The compositional caveat rides on every A14 sentence,
+        # whatever the tier (Matt's lock, 2026-11-02).
+        card["sentence"] += " " + A14_CAVEAT
     return card
 
 

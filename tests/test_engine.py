@@ -207,6 +207,51 @@ class TestC3HardEfforts(unittest.TestCase):
         self.assertIsNone(mean)
 
 
+class TestA14(unittest.TestCase):
+    """A14 (added 2026-11-02): REM share -> next-morning RHR, with
+    the compositional caveat carried verbatim on the card sentence."""
+
+    CAVEAT = ("Sleep stages add up to 100%: a higher REM share means "
+              "a lower share of light or deep sleep, so this finding "
+              "may reflect less light sleep rather than more REM itself.")
+
+    def _athlete(self, with_stages, n=60):
+        ath = Athlete(id="t", display_label="test", source="synthetic")
+        d = date(2026, 5, 1)
+        for i in range(n):
+            share = 0.18 + 0.02 * (i % 6)  # 0.18 .. 0.28
+            dur = 480.0
+            rem = share * dur if with_stages else None
+            ath.sleep_nights.append(SleepNight(
+                wake_date=d + timedelta(days=i), duration_min=dur,
+                bedtime_min_past_21=60.0,
+                rem_min=rem,
+                light_min=(dur - rem - 0.2 * dur) if with_stages else None,
+                deep_min=(0.2 * dur) if with_stages else None))
+            # Planted: higher REM share -> lower next-morning RHR
+            # (-4 bpm per 10 percentage points of share).
+            ath.daily.append(Daily(
+                date=d + timedelta(days=i),
+                resting_hr_bpm=round(60.0 - 40.0 * share, 2)))
+        return ath
+
+    def test_planted_rem_share_effect_and_caveat(self):
+        pack = build_fact_pack(self._athlete(with_stages=True))
+        a14 = next(c for c in pack["cards"] if c["question"] == "A14")
+        self.assertIn(a14["tier"], ("solid", "emerging"))
+        self.assertIsNotNone(a14["effect"])
+        self.assertTrue(-6.0 < a14["effect"] < -2.0)
+        self.assertEqual(a14["n"], 60)
+        self.assertIn(self.CAVEAT, a14["sentence"])
+
+    def test_no_stage_data_is_insufficient_with_caveat(self):
+        pack = build_fact_pack(self._athlete(with_stages=False))
+        a14 = next(c for c in pack["cards"] if c["question"] == "A14")
+        self.assertEqual(a14["tier"], "insufficient_data")
+        self.assertIn("sleep stage data", a14["sentence"])
+        self.assertIn(self.CAVEAT, a14["sentence"])
+
+
 class TestAnchorPin(unittest.TestCase):
     def _spanning_athlete(self):
         """Synthetic nights Aug 1 - Oct 31 2026 + races on both sides
@@ -257,7 +302,7 @@ class TestAnchorPin(unittest.TestCase):
         ath = _athlete_from_nights(nights)
         pack = build_fact_pack(ath, anchor="2026-10-26")
         self.assertEqual(pack["window_anchor"], "2026-10-26")
-        self.assertEqual(len(pack["cards"]), 24)
+        self.assertEqual(len(pack["cards"]), 25)
         self.assertEqual(pack["aggregates"]["nights_counted"], 55)
 
 
