@@ -257,6 +257,24 @@ class TestOrchestration(unittest.TestCase):
             call_spark("s", "u", model="muse-spark-1.3-contributor")
 
 
+class TestPrompt(unittest.TestCase):
+    BANNED = ("because", "since", "so that", "due to", "leads to",
+              "causes", "caused by", "results in")
+
+    def test_prompt_bans_causal_connectors_by_name(self):
+        # The Oct-26 aligned pack failed validation twice on the
+        # single word "because" in a ruled-out line. The prompt now
+        # names every banned connector and gives the compliant
+        # pattern, in the system rules and again in the ruled-out
+        # section spec. The validator lint itself is unchanged.
+        system, _user = narrative.build_prompt(PACK)
+        for word in self.BANNED:
+            self.assertIn(f'"{word}"', system)
+        self.assertGreaterEqual(system.count("causal connectors"), 2)
+        self.assertIn("showed no pattern over N nights", system)
+        self.assertIn("the likely range includes zero", system)
+
+
 class TestSpendLog(unittest.TestCase):
     def test_append_continues_numbering_and_totals(self):
         with tempfile.TemporaryDirectory() as td:

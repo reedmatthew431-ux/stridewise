@@ -269,7 +269,12 @@ use. Write the Analyst Report as a JSON object with exactly three keys:
   what matters most.
 - "ruled_out": what was checked and did not hold up (cards with tier
   "no_pattern" or "insufficient_data"). State plainly that the data did
-  not show a pattern. This section is a feature, not a failure.
+  not show a pattern. This section is a feature, not a failure. In
+  this section in particular, never use causal connectors: "because",
+  "since", "so that", "due to", "leads to", "causes", "caused by",
+  and "results in" are banned here too. State the observation and
+  the gate outcome instead: "X showed no pattern over N nights —
+  the likely range includes zero."
 - "evidence_needs": for questions the data cannot yet settle, state
   what the EVIDENCE needs (more nights, a missing field, a wider range
   of weeks). Never phrase this as a prediction about the athlete and
@@ -283,8 +288,14 @@ example "A1"); race cards are cited as QUESTION@DATE (for example
 Hard rules for every claim:
 - Every number in the text must be a value carried by one of the cited
   facts (display rounding is fine).
-- No causal language: nothing causes, leads to, improves, prevents, or
-  will make anything else happen. Describe associations only.
+- No causal language. Never use causal connectors: "because",
+  "since", "so that", "due to", "leads to", "causes", "caused by",
+  and "results in" are banned in every section. Also never write
+  that one thing improves, prevents, guarantees, or will make
+  another thing happen. Describe associations only. State the
+  observation and the gate outcome instead: for example, "X showed
+  no pattern over N nights — the likely range includes zero",
+  where X is the question and N is its paired count.
 - No medical language and no advice. Never tell the athlete what to do.
 - No predictions about the athlete's future results or feelings.
 - If you name a tier, it must be the tier of a cited fact. A demoted
