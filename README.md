@@ -109,6 +109,61 @@ written back — a partial matched count is reported as partial,
 never as final. Individual non-429 failures count that athlete as
 unmatched and the run continues.
 
+## Race discovery
+
+Calibration needs a race entry with a `results_url`; discovery
+is where that entry comes from. A wearable export is anonymous
+by design — the adapters strip identity on purpose — so the app
+cannot find who an athlete is, or how their races went, from an
+export alone. The athlete claims their identity once, by linking
+a PUBLIC results profile. Discovery reads that profile and
+proposes their race list; the athlete confirms the list before
+anything is used, and conditions notes are always the athlete's
+own words, never discovered.
+
+```bash
+python -m engine.discover <profile-url> [out.json]
+```
+
+Two adapters sit behind one interface (`discover(url)`):
+
+- **TFRRS** (college): server-rendered and fully working. The
+  profile page is fetched live (a profile gains races over a
+  season) and written through to the calibration cache; the
+  meet-results pane it serves shows the current season, and
+  discovery proposes exactly what that pane shows. Each XC entry
+  is resolved against its meet page — the athlete's own row is
+  located among the individual-results tables and the resulting
+  `calibration_table` hint is verified through calibrate's own
+  parser — so a confirmed entry feeds `engine.calibrate`
+  unchanged. Verified live 2026-11-02 against two real profiles:
+  the discovered lists reproduced the hand-wired race lists
+  (every time, place, table; two meet names differ only in that
+  TFRRS prints the full meet name where the hand entries were
+  shortened), plus each profile's post-anchor championship race,
+  which discovery correctly finds and the board's anchor leaves
+  off until confirmed. One discovered entry run through
+  calibration reproduced the wired C1 numbers exactly.
+- **Athletic.net** (high school): the identity pattern is the
+  same and the parser for the page's rendered structure
+  (identity, season records, rankings/bests) is implemented and
+  fixture-tested — but the live page is a JavaScript app shell.
+  Verified 2026-11-02: the athlete page and the school records
+  page return ~10 KB of Angular shell whose only
+  athlete-specific content is the `<title>`; the legacy .aspx
+  athlete URLs redirect to the homepage. The stdlib fetch stack
+  cannot run the app, so live discovery reports
+  `status: "blocked"` (reason `"js_wall"`) with the evidence and
+  only the title-derived name — the block is reported, never
+  papered over. Field calibration is TFRRS-only in this build
+  regardless: Athletic.net entries carry
+  `calibration_table = null`, and no field match is faked.
+
+Fetch discipline is calibration's: descriptive User-Agent,
+sequential with a short delay, every page cached under
+`~/workspace/hackathon/cache/` (never in the repo), HTTP 429 or
+a block page stops the run.
+
 ## Code-only rule (from commit one)
 
 This repo contains code + synthetic sample data ONLY. No raw exports,
