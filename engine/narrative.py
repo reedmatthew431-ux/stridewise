@@ -278,7 +278,10 @@ use. Write the Analyst Report as a JSON object with exactly three keys:
 - "evidence_needs": for questions the data cannot yet settle, state
   what the EVIDENCE needs (more nights, a missing field, a wider range
   of weeks). Never phrase this as a prediction about the athlete and
-  never tell the athlete what to do.
+  never tell the athlete what to do. If a need spans several
+  questions, write one claim per card for it.
+  Never merge counts from different cards into one combined
+  figure.
 
 Every claim is an object {"text": "...", "cites": ["A1", ...]}.
 Citation IDs: pattern cards are cited by their question ID (for
@@ -286,8 +289,13 @@ example "A1"); race cards are cited as QUESTION@DATE (for example
 "C1@2026-10-17"); the aggregates block is cited as "AGG".
 
 Hard rules for every claim:
-- Every number in the text must be a value carried by one of the cited
-  facts (display rounding is fine).
+- Every number in a claim must appear in exactly one of the
+  claim's cited cards, copied as displayed (display rounding
+  is fine). NEVER add, sum, average, or otherwise combine
+  numbers across cards: a figure built by combining values
+  from two cited cards is an invented number, even when each
+  part is real. If a point would need a combined figure,
+  split it into one claim per card instead.
 - No causal language. Never use causal connectors: "because",
   "since", "so that", "due to", "leads to", "causes", "caused by",
   and "results in" are banned in every section. Also never write

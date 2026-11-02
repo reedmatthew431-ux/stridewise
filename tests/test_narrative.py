@@ -274,6 +274,23 @@ class TestPrompt(unittest.TestCase):
         self.assertIn("showed no pattern over N nights", system)
         self.assertIn("the likely range includes zero", system)
 
+    def test_prompt_bans_combining_numbers_across_cards(self):
+        # The aligned-pack run after the causal fix failed on ONE
+        # item: evidence_needs[2] stated 14, a figure reached by
+        # combining counts across its three cited cards (B1, B2,
+        # B8) that no cited fact carries. The validator was right;
+        # the prompt had never forbidden combining. It now does,
+        # in the system hard rules and again in the evidence_needs
+        # section spec. The validator itself is unchanged.
+        system, _user = narrative.build_prompt(PACK)
+        self.assertIn("claim's cited cards, copied as displayed",
+                      system)
+        self.assertIn(
+            "NEVER add, sum, average, or otherwise combine", system)
+        self.assertIn("numbers across cards", system)
+        self.assertIn("one claim per card", system)
+        self.assertIn("merge counts from different cards", system)
+
 
 class TestSpendLog(unittest.TestCase):
     def test_append_continues_numbering_and_totals(self):
