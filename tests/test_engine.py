@@ -131,25 +131,27 @@ class TestDemotion(unittest.TestCase):
 
 
 class TestC3HardEfforts(unittest.TestCase):
-    """C3's comparison set (2026-11-02 rebuild): hard efforts only --
-    races plus runs whose avg HR is in the top quartile of run avg
-    HRs. The old all-runs set was dominated by easy runs, so a real
-    race-day under-read never looked unusual."""
+    """C3's comparison set (2026-11-02 rebuild, narrowed to the top
+    decile the same day): hard efforts only -- races plus runs whose
+    avg HR is at or above the 90th percentile of run avg HRs. The
+    old all-runs set was dominated by easy runs, so a real race-day
+    under-read never looked unusual; the top quartile still admitted
+    tempo runs, so the reference class is race-intensity efforts."""
 
     def _athlete(self):
         ath = Athlete(id="t", display_label="test", source="synthetic")
         d = date(2026, 8, 1)
-        # 24 easy runs at 130 bpm.
-        for i in range(24):
+        # 30 easy runs at 130 bpm.
+        for i in range(30):
             ath.activities.append(Activity(
                 date=d + timedelta(days=i), kind="run", avg_hr_bpm=130.0))
-        # 8 tempo runs at 165 bpm.
-        for i in range(8):
+        # 10 hard workouts at 175 bpm.
+        for i in range(10):
             ath.activities.append(Activity(
                 date=d + timedelta(days=40 + i), kind="run",
-                avg_hr_bpm=165.0))
-        # 5 races: four honest efforts at 182, one under-read at 145.
-        for i, hr in enumerate([182.0, 182.0, 182.0, 182.0, 145.0]):
+                avg_hr_bpm=175.0))
+        # 5 races: four honest efforts at 185, one under-read at 148.
+        for i, hr in enumerate([185.0, 185.0, 185.0, 185.0, 148.0]):
             rd = date(2026, 9, 5) + timedelta(days=7 * i)
             ath.activities.append(Activity(
                 date=rd, kind="run", avg_hr_bpm=hr, is_race=True))
@@ -159,21 +161,22 @@ class TestC3HardEfforts(unittest.TestCase):
     def test_comparison_set_is_hard_efforts_only(self):
         ath = self._athlete()
         mean, sd, n = _hard_effort_hr(ath)
-        # Pool Q3 = 165 -> hard = 8 tempo + 4 honest races + the
-        # under-read race itself (races count by definition) = 13.
-        # The 24 easy runs at 130 are NOT in the set.
-        self.assertEqual(n, 13)
-        self.assertTrue(168.0 < mean < 170.0)
+        # Pool P90 (90th percentile, quantiles n=10 inclusive) = 175
+        # -> hard = 10 hard workouts + 4 honest races + the
+        # under-read race itself (races count by definition) = 15.
+        # The 30 easy runs at 130 are NOT in the set.
+        self.assertEqual(n, 15)
+        self.assertTrue(175.0 < mean < 176.5)
 
     def test_under_read_flags_and_honest_race_does_not(self):
         ath = self._athlete()
         c3 = {c["date"]: c for c in race_cards(ath)
               if c["question"] == "C3"}
-        under = c3["2026-10-03"]  # the 145 bpm race (i=4)
+        under = c3["2026-10-03"]  # the 148 bpm race (i=4)
         self.assertTrue(under["flagged"])
-        self.assertEqual(under["comparison_n"], 13)
-        self.assertTrue(168.0 < under["typical_avg_hr"] < 170.0)
-        honest = c3["2026-09-05"]  # a 182 bpm race
+        self.assertEqual(under["comparison_n"], 15)
+        self.assertTrue(175.0 < under["typical_avg_hr"] < 176.5)
+        honest = c3["2026-09-05"]  # a 185 bpm race
         self.assertFalse(honest["flagged"])
 
     def test_thin_history_gives_no_verdict(self):
@@ -195,7 +198,7 @@ class TestC3HardEfforts(unittest.TestCase):
         self.assertIsNone(c3["typical_avg_hr"])
 
     def test_hard_set_below_five_gives_no_verdict(self):
-        # Pool has >= 5 HRs but the top quartile holds only 4 runs.
+        # Pool has >= 5 HRs but the top decile holds only 4 runs.
         ath = Athlete(id="t", display_label="test", source="synthetic")
         for i, hr in enumerate([100.0, 100.0, 100.0,
                                 200.0, 200.0, 200.0, 200.0]):

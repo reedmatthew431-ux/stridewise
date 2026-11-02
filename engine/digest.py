@@ -142,11 +142,10 @@ def build_digest(prev, cur):
                 and len(nsets) == 1 and None not in nsets:
             emit("c3_comparison_change",
                  f"Sensor check now compares race heart rate against "
-                 f"hard efforts only (races and top-quartile runs): "
-                 f"the typical hard-effort average is "
-                 f"{_fmt(news.pop())} bpm across {nsets.pop()} hard "
-                 f"efforts, previously {_fmt(olds.pop())} bpm across "
-                 f"all runs.",
+                 f"races and hardest efforts: the typical hard-effort "
+                 f"average is {_fmt(news.pop())} bpm across "
+                 f"{nsets.pop()} hard efforts, previously "
+                 f"{_fmt(olds.pop())} bpm.",
                  races=len(c3))
             c3_grouped = True
     for k in shared:

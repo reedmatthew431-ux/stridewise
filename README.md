@@ -134,16 +134,21 @@ profiles are injected at deploy time from the workspace, never committed.
   not part of this track: C4 emits the result with
   `prediction_range = null` and an explicit reason, never a fabricated
   range.
-- **C3's comparison set** (rebuilt 2026-11-02) is hard efforts only:
-  a run counts as a hard effort if it is a race (`is_race`) or its
-  avg HR is in the top quartile of the athlete's run avg HRs
-  (avg HR >= Q3, `statistics.quantiles(..., method="inclusive")`
-  over all runs with an HR reading). The gate is unchanged -- flag
-  when a race's avg HR falls more than 2 SD below the comparison
-  mean -- and the "typical" the card cites is the hard-effort mean.
-  The old all-runs set was dominated by easy runs, so its mean sat
+- **C3's comparison set** (rebuilt 2026-11-02; narrowed from the
+  top quartile to the top decile the same day, Matt's call) is hard
+  efforts only: a run counts as a hard effort if it is a race
+  (`is_race`) or its avg HR is in the top decile of the athlete's
+  run avg HRs (avg HR >= P90, the 90th-percentile cut
+  `statistics.quantiles(hrs, n=10, method="inclusive")[8]` over all
+  runs with an HR reading). The gate is unchanged -- flag when a
+  race's avg HR falls more than 2 SD below the comparison mean --
+  and the "typical" the card cites is the hard-effort mean. The
+  old all-runs set was dominated by easy runs, so its mean sat
   near easy pace and a genuine race-day under-read never looked
-  unusual. A verdict needs >= 5 hard efforts with HR.
+  unusual; the quartile still admitted tempo runs in the
+  150s-160s, which widened the spread enough to hide one, so the
+  reference class is now race-intensity efforts only. A verdict
+  needs >= 5 hard efforts with HR.
 - **Garmin adapter decisions** (verified against the export, not
   assumed): activity duration is in milliseconds and distance in
   centimeters (distance/duration reproduces stored avgSpeed on

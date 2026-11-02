@@ -93,8 +93,9 @@ class TestDigest(unittest.TestCase):
         cur = pack([], [rc("2026-09-12", 159.0), rc("2026-10-17", 159.0)])
         d = build_digest(prev, cur)
         self.assertEqual(len(d["lines"]), 1)
-        self.assertIn("hard efforts only", d["lines"][0])
+        self.assertIn("races and hardest efforts", d["lines"][0])
         self.assertIn("159 bpm across 43 hard efforts", d["lines"][0])
+        self.assertIn("previously 142.4 bpm", d["lines"][0])
 
     def test_race_flag_change(self):
         def rc(flag):

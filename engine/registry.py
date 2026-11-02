@@ -834,25 +834,30 @@ def _ordinal(n):
 def _hard_effort_hr(athlete):
     """(mean, sd, n) of avg HR over HARD EFFORTS only.
 
-    C3's comparison set (rebuilt 2026-11-02, Matt's lock). A hard
-    effort is a run that is a race (is_race) or whose avg HR is in
-    the top quartile of the athlete's run avg HRs: avg_hr >= Q3,
-    where Q3 is statistics.quantiles(hrs, n=4, method="inclusive")[2]
-    over every run with an HR reading (races included). The old
-    all-runs set was dominated by easy runs, so its mean sat near
-    easy pace and a genuine race-day under-read never looked
-    unusual. Deterministic: quantiles are a fixed function of the
-    data. Returns (None, None, n) when fewer than 5 hard efforts
-    carry HR -- too thin to judge against.
+    C3's comparison set (rebuilt 2026-11-02, Matt's lock; narrowed
+    the same day from the top quartile to the top decile, also
+    Matt's call). A hard effort is a run that is a race (is_race)
+    or whose avg HR is in the top decile of the athlete's run avg
+    HRs: avg_hr >= P90, where P90 is the 90th-percentile cut,
+    statistics.quantiles(hrs, n=10, method="inclusive")[8], over
+    every run with an HR reading (races included). The old all-runs
+    set was dominated by easy runs, so its mean sat near easy pace
+    and a genuine race-day under-read never looked unusual; the
+    quartile still admitted tempo runs in the 150s-160s, which
+    widened the spread enough to hide one, so the reference class
+    is now race-intensity efforts only. Deterministic: quantiles
+    are a fixed function of the data. Returns (None, None, n) when
+    fewer than 5 hard efforts carry HR -- too thin to judge
+    against.
     """
     hrs = sorted(a.avg_hr_bpm for a in athlete.runs
                  if a.avg_hr_bpm is not None)
     if len(hrs) < 5:
         return None, None, 0
-    q3 = statistics.quantiles(hrs, n=4, method="inclusive")[2]
+    p90 = statistics.quantiles(hrs, n=10, method="inclusive")[8]
     hard = [a.avg_hr_bpm for a in athlete.runs
             if a.avg_hr_bpm is not None
-            and (a.is_race or a.avg_hr_bpm >= q3)]
+            and (a.is_race or a.avg_hr_bpm >= p90)]
     if len(hard) < 5:
         return None, None, len(hard)
     return statistics.mean(hard), statistics.stdev(hard), len(hard)
@@ -957,7 +962,7 @@ def race_cards(athlete):
             "sentence": c2_sentence,
         }
         # C3: flag when race HR is implausibly low vs the HARD-
-        # EFFORT comparison set (races + top-quartile-HR runs; see
+        # EFFORT comparison set (races + top-decile-HR runs; see
         # _hard_effort_hr). Same 2 SD rule as before, new set: the
         # "typical" the sentence cites is the hard-effort typical.
         race_act = [a for a in athlete.activities
